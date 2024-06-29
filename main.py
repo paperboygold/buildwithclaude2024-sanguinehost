@@ -1,7 +1,6 @@
 import os
 import anthropic
 import tcod
-from tcod import console
 import textwrap
 from tcod.event import KeySym
 from dotenv import load_dotenv
