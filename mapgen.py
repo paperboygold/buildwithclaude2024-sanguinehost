@@ -14,6 +14,7 @@ class Tile:
         self.blocked = tile_type in (TileType.WALL, TileType.DOOR)
         self.block_sight = tile_type == TileType.WALL
         self.explored = False
+        self.walkable = tile_type == TileType.FLOOR
 
 class Room:
     def __init__(self, x, y, width, height):
@@ -100,7 +101,7 @@ class Map:
         for y in range(self.height):
             for x in range(self.width):
                 self.fov_map.transparent[y, x] = not self.tiles[y][x].block_sight
-                self.fov_map.walkable[y, x] = not self.tiles[y][x].blocked
+                self.fov_map.walkable[y, x] = self.tiles[y][x].walkable
 
     def compute_fov(self, x, y, radius, light_walls=True, algorithm=0):
         self.fov_map.compute_fov(x, y, radius, light_walls, algorithm)
@@ -109,6 +110,18 @@ class Map:
         if 0 <= x < self.width and 0 <= y < self.height:
             return self.fov_map.fov[y, x]
         return False
+
+    def is_walkable(self, x, y):
+        if 0 <= x < self.width and 0 <= y < self.height:
+            return self.tiles[y][x].walkable
+        return False
+
+    def get_random_walkable_position(self):
+        while True:
+            x = random.randint(0, self.width - 1)
+            y = random.randint(0, self.height - 1)
+            if self.is_walkable(x, y):
+                return (x, y)
 
     def generate(self, num_rooms, min_size=5, max_size=10):
         for _ in range(num_rooms):

@@ -1,3 +1,4 @@
 .env
 .venv
 game.log
+__pycache__

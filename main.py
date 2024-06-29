@@ -12,6 +12,8 @@ from character_cards import character_cards
 import json
 from mapgen import generate_map, TileType, Tile
 import random
+from dijkstra_map import DijkstraMap
+import time
 
 def setup_logging():
     logging.basicConfig(
@@ -46,12 +48,52 @@ class Player(Entity):
     def __init__(self, x, y):
         super().__init__(x, y, '@', 'Player')
 
+class NPCState(Enum):
+    IDLE = auto()
+    PATROL = auto()
+    ALERT = auto()
+    FLEE = auto()
+
 class NPC(Entity):
     def __init__(self, x, y, name, character_card_key):
         super().__init__(x, y, 'N', name)
         self.character_card = character_cards.get(character_card_key, "")
         self.dialogue_history = []
         self.knowledge = NPCKnowledge()
+        self.state = NPCState.IDLE
+        self.target = None
+        self.dijkstra_map = None
+        self.last_move_time = 0
+        self.move_delay = 0.5  # Move every 0.5 seconds
+
+    def update(self, game_map):
+        current_time = time.time()
+        if current_time - self.last_move_time < self.move_delay:
+            return
+
+        if self.state == NPCState.IDLE:
+            if random.random() < 0.1:
+                self.state = NPCState.PATROL
+                self.target = game_map.get_random_walkable_position()
+                self.dijkstra_map = DijkstraMap(game_map.width, game_map.height)
+                self.dijkstra_map.compute([self.target], game_map.is_walkable)
+        elif self.state == NPCState.PATROL:
+            if self.target:
+                direction = self.dijkstra_map.get_direction(int(self.x), int(self.y))
+                if direction:
+                    new_x = self.x + direction[0]
+                    new_y = self.y + direction[1]
+                    if game_map.is_walkable(int(new_x), int(new_y)):
+                        self.x = new_x
+                        self.y = new_y
+                        self.last_move_time = current_time
+
+                if (int(self.x), int(self.y)) == self.target:
+                    self.state = NPCState.IDLE
+                    self.target = None
+                    self.dijkstra_map = None
+            else:
+                self.state = NPCState.IDLE
 
 class NPCKnowledge:
     def __init__(self):
@@ -96,7 +138,7 @@ class World:
         return next((e for e in self.entities if int(e.x) == int(x) and int(e.y) == int(y)), None)
 
     def is_walkable(self, x, y):
-        return self.game_map.tiles[y][x].tile_type in (TileType.FLOOR, TileType.DOOR)
+        return self.game_map.is_walkable(x, y)
 
     def update_npc_knowledge(self):
         for npc in [entity for entity in self.entities if isinstance(entity, NPC)]:
@@ -107,6 +149,11 @@ class World:
             current_room = next((room for room in self.game_map.rooms if room.x <= npc.x < room.x + room.width and room.y <= npc.y < room.y + room.height), None)
             if current_room:
                 npc.knowledge.add_location(f"Room at ({current_room.x}, {current_room.y})")
+
+    def update_npcs(self):
+        for entity in self.entities:
+            if isinstance(entity, NPC):
+                entity.update(self.game_map)
 
     def generate_npc_relationships(self):
         npc_entities = [entity for entity in self.entities if isinstance(entity, NPC)]
@@ -496,7 +543,7 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
         new_x = int(self.world.player.x + dx)
         new_y = int(self.world.player.y + dy)
         self.logger.debug(f"Attempting to move player to ({new_x}, {new_y})")
-        if 0 <= new_x < self.world.width and 0 <= new_y < self.world.height and self.world.is_walkable(new_x, new_y):
+        if self.world.game_map.is_walkable(new_x, new_y):
             self.world.player.x = new_x
             self.world.player.y = new_y
             self.add_message(f"You move to ({new_x}, {new_y})", MessageChannel.MOVEMENT, (200, 200, 200))
@@ -509,7 +556,8 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
     def run(self):
         try:
             while True:
-                self.world.update_npc_knowledge()  # Add this line
+                self.world.update_npc_knowledge()
+                self.world.update_npcs()  # Add this line
                 self.render()
                 for event in tcod.event.wait():
                     if event.type == "QUIT":
@@ -542,13 +590,13 @@ def main():
         game.world = world  # Set the world for the game
 
         # Find a valid starting position for the player
-        player_x, player_y = world.game_map.rooms[0].x + 1, world.game_map.rooms[0].y + 1
+        player_x, player_y = world.game_map.get_random_walkable_position()
         player = Player(player_x, player_y)
         world.add_entity(player)
         
-        # Place NPCs in random rooms
-        for i, room in enumerate(world.game_map.rooms[1:3]):  # Place 2 NPCs
-            npc_x, npc_y = room.x + 1, room.y + 1
+        # Place NPCs in random positions
+        for i in range(2):  # Place 2 NPCs
+            npc_x, npc_y = world.game_map.get_random_walkable_position()
             if i == 0:
                 npc = NPC(npc_x, npc_y, "Wise Old Man", "wise_old_man")
             else:
