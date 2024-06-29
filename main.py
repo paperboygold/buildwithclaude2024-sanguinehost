@@ -8,6 +8,8 @@ from enum import Enum, auto
 import logging
 import traceback
 from typing import Optional
+from character_cards import character_cards
+import json
 
 def setup_logging():
     logging.basicConfig(
@@ -43,8 +45,9 @@ class Player(Entity):
         super().__init__(x, y, '@', 'Player')
 
 class NPC(Entity):
-    def __init__(self, x, y, name):
+    def __init__(self, x, y, name, character_card_key):
         super().__init__(x, y, 'N', name)
+        self.character_card = character_cards.get(character_card_key, "")
         self.dialogue_history = []
 
 class World:
@@ -74,6 +77,31 @@ class Message:
         self.text = text
         self.channel = channel
         self.color = color
+
+class WorldState:
+    def __init__(self):
+        self.player_actions = []
+        self.discovered_areas = set()
+        self.defeated_enemies = []
+        self.acquired_items = []
+
+    def update(self, action, data):
+        if action == "move":
+            self.player_actions.append(f"Moved to {data}")
+        elif action == "discover":
+            self.discovered_areas.add(data)
+        elif action == "defeat":
+            self.defeated_enemies.append(data)
+        elif action == "acquire":
+            self.acquired_items.append(data)
+
+    def get_summary(self):
+        return f"""
+Player Actions: {', '.join(self.player_actions[-5:])}
+Discovered Areas: {', '.join(self.discovered_areas)}
+Defeated Enemies: {', '.join(self.defeated_enemies[-5:])}
+Acquired Items: {', '.join(self.acquired_items[-5:])}
+"""
 
 class Game:
     def __init__(self, world):
@@ -242,18 +270,35 @@ class Game:
                     self.show_message("Dialogue ended.", MessageChannel.DIALOGUE, (0, 255, 255))
                     break
                 
-                # Display player's message in green
                 self.show_message(f"You: {user_input}", MessageChannel.DIALOGUE, (0, 255, 0))
                 
                 npc.dialogue_history.append({"role": "user", "content": user_input})
                 
                 try:
-                    response = self.anthropic_client.messages.create(
-                        model="claude-3-5-sonnet-20240620",
-                        max_tokens=150,
-                        system=f"You are {npc.name}, an NPC in a roguelike game. Respond in character, but keep your responses brief, natural, and to the point. Avoid overly flowery or theatrical language.",
-                        messages=npc.dialogue_history
-                    )
+                    system_prompt = f"You are {npc.name}, an NPC in a roguelike game. Here is your character card:\n{npc.character_card}\nRespond in character, but keep your responses brief, natural, and to the point. Avoid overly flowery or theatrical language."
+                    
+                    # Log the request to the API
+                    self.logger.info(f"API Request for {npc.name}:")
+                    self.logger.info(f"System Prompt: {system_prompt}")
+                    self.logger.info(f"Messages: {json.dumps(npc.dialogue_history, indent=2)}")
+                    
+                    # Prepare the request body
+                    request_body = {
+                        "model": "claude-3-5-sonnet-20240620",
+                        "max_tokens": 150,
+                        "messages": npc.dialogue_history,
+                        "system": system_prompt,
+                        "temperature": 0.7,
+                        "top_p": 1,
+                        "stream": False,
+                        "stop_sequences": ["\n\nHuman:", "\n\nSystem:", "\n\nAssistant:"]
+                    }
+                    
+                    response = self.anthropic_client.messages.create(**request_body)
+                    
+                    # Log the response from the API
+                    self.logger.info(f"API Response for {npc.name}:")
+                    self.logger.info(f"Response: {json.dumps(response.model_dump(), indent=2)}")
                     
                     npc_response = response.content[0].text if response.content else ""
                     npc.dialogue_history.append({"role": "assistant", "content": npc_response})
@@ -261,11 +306,59 @@ class Game:
                     self.show_message(f"{npc.name}: {npc_response}", MessageChannel.DIALOGUE, (0, 255, 255))
                 except Exception as e:
                     self.logger.error(f"Error in AI response: {str(e)}")
+                    self.logger.debug(traceback.format_exc())
                     self.show_message(f"Error: Unable to get NPC response", MessageChannel.SYSTEM, (255, 0, 0))
         except Exception as e:
             self.logger.error(f"Error in dialogue: {str(e)}")
             self.logger.debug(traceback.format_exc())
             self.show_message(f"An error occurred during dialogue", MessageChannel.SYSTEM, (255, 0, 0))
+
+    def start_npc_dialogue(self, npc1, npc2):
+        try:
+            self.show_message(f"{npc1.name} is now talking to {npc2.name}", MessageChannel.DIALOGUE, (0, 255, 255))
+            
+            while True:
+                try:
+                    for current_npc, other_npc in [(npc1, npc2), (npc2, npc1)]:
+                        system_prompt = f"You are {current_npc.name}, an NPC in a roguelike game. Here is your character card:\n{current_npc.character_card}\nYou are talking to {other_npc.name}. Respond in character, but keep your responses brief, natural, and to the point. Avoid overly flowery or theatrical language."
+                        
+                        # Log the request to the API
+                        self.logger.info(f"API Request for {current_npc.name}:")
+                        self.logger.info(f"System Prompt: {system_prompt}")
+                        self.logger.info(f"Messages: {json.dumps(current_npc.dialogue_history, indent=2)}")
+                        
+                        # Prepare the request body
+                        request_body = {
+                            "model": "claude-3-5-sonnet-20240620",
+                            "max_tokens": 150,
+                            "messages": current_npc.dialogue_history,
+                            "system": system_prompt,
+                            "temperature": 0.7,
+                            "top_p": 1,
+                            "stream": False,
+                            "stop_sequences": ["\n\nHuman:", "\n\nSystem:", "\n\nAssistant:"]
+                        }
+                        
+                        response = self.anthropic_client.messages.create(**request_body)
+                        
+                        # Log the response from the API
+                        self.logger.info(f"API Response for {current_npc.name}:")
+                        self.logger.info(f"Response: {json.dumps(response.model_dump(), indent=2)}")
+                        
+                        npc_response = response.content[0].text if response.content else ""
+                        current_npc.dialogue_history.append({"role": "assistant", "content": npc_response})
+                        other_npc.dialogue_history.append({"role": "user", "content": npc_response})
+                        
+                        self.show_message(f"{current_npc.name}: {npc_response}", MessageChannel.DIALOGUE, (0, 255, 255))
+                except Exception as e:
+                    self.logger.error(f"Error in AI response: {str(e)}")
+                    self.logger.debug(traceback.format_exc())
+                    self.show_message(f"Error: Unable to get NPC response", MessageChannel.SYSTEM, (255, 0, 0))
+                    break
+        except Exception as e:
+            self.logger.error(f"Error in NPC dialogue: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+            self.show_message(f"An error occurred during NPC dialogue", MessageChannel.SYSTEM, (255, 0, 0))
 
     def interact(self):
         player_x, player_y = int(self.world.player.x), int(self.world.player.y)
@@ -317,9 +410,11 @@ def main():
     try:
         world = World(80, 38)  # Match the game area size
         player = Player(40, 19)
-        npc = NPC(42, 19, "Wise Old Man")
+        npc1 = NPC(42, 19, "Wise Old Man", "wise_old_man")
+        npc2 = NPC(44, 19, "Mysterious Stranger", "mysterious_stranger")
         world.add_entity(player)
-        world.add_entity(npc)
+        world.add_entity(npc1)
+        world.add_entity(npc2)
 
         game = Game(world)
         game.run()
