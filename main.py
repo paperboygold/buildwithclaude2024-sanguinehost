@@ -85,7 +85,7 @@ class Game:
             title="Roguelike Game",
             vsync=True,
             tileset=tcod.tileset.load_tilesheet(
-                "tiles/terminal16x16_gs_ro.png", 16, 16, tcod.tileset.CHARMAP_CP437
+                "assets/tiles/terminal16x16_gs_ro.png", 16, 16, tcod.tileset.CHARMAP_CP437
             )
         )
         self.root_console = tcod.console.Console(self.width, self.height)
