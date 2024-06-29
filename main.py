@@ -120,12 +120,22 @@ class Game:
         
         # Render game area
         self.game_console.draw_frame(0, 0, self.width, self.game_area_height, ' ')
+        # Draw the missing top horizontal line
+        self.game_console.draw_rect(1, 0, self.width - 2, 1, ord('─'))
+        # Fix the top-right corner
+        self.game_console.put_char(self.width - 1, 0, ord('┐'))
+        
         for entity in self.world.entities:
             x = int(entity.x)
             y = int(entity.y)
             self.game_console.print(x, y, entity.char)
         
+        # Render dialogue area
         self.render_message_log()
+        # Draw the missing top horizontal line for the dialogue console
+        self.dialogue_console.draw_rect(1, 0, self.width - 2, 1, ord('─'))
+        # Fix the top-right corner for the dialogue console
+        self.dialogue_console.put_char(self.width - 1, 0, ord('┐'))
         
         # Blit game and dialogue consoles to root console
         self.game_console.blit(self.root_console, 0, 0)
