@@ -193,7 +193,7 @@ class Game:
             
             # Update the message log with the wrapped input
             self.message_log = self.message_log[:-len(input_lines)] if input_lines else self.message_log
-            input_lines = [Message(line, MessageChannel.SYSTEM, (255, 255, 255)) for line in wrapped_lines]
+            input_lines = [Message(line, MessageChannel.SYSTEM, (0, 255, 0)) for line in wrapped_lines]  # Change color to green
             self.message_log.extend(input_lines)
 
             # Ensure we don't exceed the visible log lines
@@ -209,8 +209,7 @@ class Game:
                     if event.sym == KeySym.RETURN and user_input:
                         # Remove temporary input lines
                         self.message_log = self.message_log[:-len(input_lines)]
-                        # Add the final input as a single message
-                        self.add_message(prompt + user_input, MessageChannel.DIALOGUE, (0, 255, 255))
+                        # Don't add the final input as a message here
                         return user_input
                     elif event.sym == KeySym.BACKSPACE:
                         if user_input:
@@ -231,7 +230,7 @@ class Game:
             if input_lines:
                 last_line = input_lines[-1].text
                 cursor_line = last_line[:cursor_pos] + "_" + last_line[cursor_pos:]
-                self.message_log[-1] = Message(cursor_line, MessageChannel.SYSTEM, (255, 255, 255))
+                self.message_log[-1] = Message(cursor_line, MessageChannel.SYSTEM, (0, 255, 0))  # Change color to green
 
     def start_dialogue(self, npc):
         try:
@@ -242,6 +241,9 @@ class Game:
                 if user_input is None:  # User pressed Escape
                     self.show_message("Dialogue ended.", MessageChannel.DIALOGUE, (0, 255, 255))
                     break
+                
+                # Display player's message in green
+                self.show_message(f"You: {user_input}", MessageChannel.DIALOGUE, (0, 255, 0))
                 
                 npc.dialogue_history.append({"role": "user", "content": user_input})
                 
