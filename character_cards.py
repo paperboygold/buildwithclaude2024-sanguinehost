@@ -8,7 +8,6 @@ Knowledge: Extensive knowledge of the dungeon's history, magical artifacts, and 
 Goals: To guide worthy adventurers and preserve the balance of power within the dungeon.
 Speech Style: Uses archaic language and often refers to historical or mythological events.
 """,
-    # Add more character cards here
     "mysterious_stranger": """
 Name: Lyra the Enigma
 Appearance: A cloaked figure with piercing silver eyes, face partially obscured by a shadowy hood.

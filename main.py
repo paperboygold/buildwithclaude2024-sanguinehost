@@ -316,7 +316,9 @@ class Game:
                 npc.dialogue_history.append({"role": "user", "content": user_input})
                 
                 try:
-                    system_prompt = f"You are {npc.name}, an NPC in a roguelike game. Here is your character card:\n{npc.character_card}\nRespond in character, but keep your responses brief, natural, and to the point. Avoid overly flowery or theatrical language."
+                    system_prompt = f"""You are {npc.name}, an NPC in a roguelike game. Character: {npc.character_card}
+Respond in character with extremely brief responses, typically 1-2 short sentences or 10 words or less. Be concise and direct.
+Important: Speak only in dialogue. Do not describe actions, appearances, use asterisks or quotation marks. Simply respond with what your character would say."""
                     
                     # Log the request to the API
                     self.logger.info(f"API Request for {npc.name}:")
@@ -326,7 +328,7 @@ class Game:
                     # Prepare the request body
                     request_body = {
                         "model": "claude-3-5-sonnet-20240620",
-                        "max_tokens": 150,
+                        "max_tokens": 50,  # Reduce max tokens
                         "messages": npc.dialogue_history,
                         "system": system_prompt,
                         "temperature": 0.7,
