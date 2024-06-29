@@ -101,7 +101,7 @@ class Game:
             self.context = tcod.context.new_terminal(
                 self.width,
                 self.height,
-                title="Roguelike Game",
+                title="Sanguine Host",
                 vsync=True,
                 tileset=tcod.tileset.load_tilesheet(
                     "assets/tiles/terminal16x16_gs_ro.png", 16, 16, tcod.tileset.CHARMAP_CP437
