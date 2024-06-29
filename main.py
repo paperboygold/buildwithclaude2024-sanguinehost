@@ -10,7 +10,7 @@ import traceback
 from typing import Optional
 from character_cards import character_cards
 import json
-from mapgen import generate_map, TileType
+from mapgen import generate_map, TileType, Tile
 
 def setup_logging():
     logging.basicConfig(
@@ -68,7 +68,7 @@ class World:
         return next((e for e in self.entities if int(e.x) == int(x) and int(e.y) == int(y)), None)
 
     def is_walkable(self, x, y):
-        return self.game_map.tiles[y][x] in (TileType.FLOOR, TileType.DOOR)
+        return self.game_map.tiles[y][x].tile_type in (TileType.FLOOR, TileType.DOOR)
 
 class MessageChannel(Enum):
     COMBAT = auto()
@@ -146,6 +146,8 @@ class Game:
             
             self.camera_x = 0
             self.camera_y = 0
+            self.fov_radius = 10
+            self.fov_recompute = True
 
         except Exception as e:
             self.logger.error(f"Error initializing game: {str(e)}")
@@ -180,6 +182,14 @@ class Game:
                 break
 
     def render(self):
+        if self.fov_recompute:
+            self.world.game_map.compute_fov(
+                int(self.world.player.x),
+                int(self.world.player.y),
+                self.fov_radius
+            )
+            self.fov_recompute = False
+
         self.update_camera()
         self.game_console.clear()
         self.dialogue_console.clear()
@@ -190,25 +200,39 @@ class Game:
         self.game_console.put_char(self.width - 1, 0, ord('┐'))
         
         # Render map
-        for y in range(self.game_area_height):
-            for x in range(self.width):
+        for y in range(self.game_area_height - 2):
+            for x in range(self.width - 2):
                 map_x = x + self.camera_x
                 map_y = y + self.camera_y
                 if 0 <= map_x < self.world.width and 0 <= map_y < self.world.height:
                     tile = self.world.game_map.tiles[map_y][map_x]
-                    if tile == TileType.WALL:
-                        self.game_console.print(x, y, '#', (128, 128, 128))
-                    elif tile == TileType.FLOOR:
-                        self.game_console.print(x, y, '.', (64, 64, 64))
-                    elif tile == TileType.DOOR:
-                        self.game_console.print(x, y, '+', (139, 69, 19))
+                    visible = self.world.game_map.is_in_fov(map_x, map_y)
+                    if visible:
+                        tile.explored = True
+                        if tile.tile_type == TileType.WALL:
+                            color = (130, 110, 50)
+                        elif tile.tile_type == TileType.FLOOR:
+                            color = (200, 180, 50)
+                        else:  # Door
+                            color = (0, 255, 255)
+                    elif tile.explored:
+                        if tile.tile_type == TileType.WALL:
+                            color = (0, 0, 100)
+                        elif tile.tile_type == TileType.FLOOR:
+                            color = (50, 50, 150)
+                        else:  # Door
+                            color = (0, 100, 100)
+                    else:
+                        color = (0, 0, 0)  # Unexplored and not visible
+                    self.game_console.print(x + 1, y + 1, tile.tile_type.value, color)
         
         # Render entities
         for entity in self.world.entities:
-            x = int(entity.x) - self.camera_x
-            y = int(entity.y) - self.camera_y
-            if 0 <= x < self.width and 0 <= y < self.game_area_height:
-                self.game_console.print(x, y, entity.char)
+            if self.world.game_map.is_in_fov(int(entity.x), int(entity.y)):
+                x = int(entity.x) - self.camera_x
+                y = int(entity.y) - self.camera_y
+                if 0 <= x < self.width - 2 and 0 <= y < self.game_area_height - 2:
+                    self.game_console.print(x + 1, y + 1, entity.char)
         
         # Render dialogue area
         self.render_message_log()
@@ -389,10 +413,15 @@ class Game:
     def move_player(self, dx, dy):
         new_x = int(self.world.player.x + dx)
         new_y = int(self.world.player.y + dy)
+        self.logger.debug(f"Attempting to move player to ({new_x}, {new_y})")
         if 0 <= new_x < self.world.width and 0 <= new_y < self.world.height and self.world.is_walkable(new_x, new_y):
             self.world.player.x = new_x
             self.world.player.y = new_y
             self.add_message(f"You move to ({new_x}, {new_y})", MessageChannel.MOVEMENT, (200, 200, 200))
+            self.fov_recompute = True
+            self.logger.debug(f"Player moved to ({new_x}, {new_y})")
+        else:
+            self.logger.debug(f"Movement to ({new_x}, {new_y}) blocked")
         self.update_camera()  # Update camera position after moving
 
     def run(self):
