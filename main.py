@@ -185,6 +185,7 @@ class Game:
         max_input_length = self.width * 3  # Allow for multiple lines
         input_lines = []
         cursor_pos = 0
+        ignore_next_i = True  # Add this flag
 
         while True:
             # Wrap the current input
@@ -220,8 +221,11 @@ class Game:
                         return None
                 elif event.type == "TEXTINPUT":
                     if len(user_input) < max_input_length:
-                        user_input = user_input[:cursor_pos] + event.text + user_input[cursor_pos:]
-                        cursor_pos += len(event.text)
+                        if ignore_next_i and event.text == 'i':
+                            ignore_next_i = False  # Reset the flag
+                        else:
+                            user_input = user_input[:cursor_pos] + event.text + user_input[cursor_pos:]
+                            cursor_pos += len(event.text)
 
             # Add cursor to the end of the last line
             if input_lines:
