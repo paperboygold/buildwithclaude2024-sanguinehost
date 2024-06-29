@@ -91,6 +91,14 @@ class Game:
         self.root_console = tcod.console.Console(self.width, self.height)
         self.game_console = tcod.console.Console(self.width, self.game_area_height)
         self.dialogue_console = tcod.console.Console(self.width, self.dialogue_height)
+        
+        self.camera_x = 0
+        self.camera_y = 0
+
+    def update_camera(self):
+        # Center the camera on the player
+        self.camera_x = int(self.world.player.x - self.width // 2)
+        self.camera_y = int(self.world.player.y - self.game_area_height // 2)
 
     def add_message(self, text, channel=MessageChannel.SYSTEM, color=(255, 255, 255)):
         if channel in self.visible_channels:
@@ -115,20 +123,21 @@ class Game:
                 break
 
     def render(self):
+        self.update_camera()
         self.game_console.clear()
         self.dialogue_console.clear()
         
         # Render game area
         self.game_console.draw_frame(0, 0, self.width, self.game_area_height, ' ')
-        # Draw the missing top horizontal line
         self.game_console.draw_rect(1, 0, self.width - 2, 1, ord('─'))
-        # Fix the top-right corner
         self.game_console.put_char(self.width - 1, 0, ord('┐'))
         
         for entity in self.world.entities:
-            x = int(entity.x)
-            y = int(entity.y)
-            self.game_console.print(x, y, entity.char)
+            x = int(entity.x) - self.camera_x
+            y = int(entity.y) - self.camera_y
+            # Only draw entities within the inner area of the game window
+            if 1 <= x < self.width - 1 and 1 <= y < self.game_area_height - 1:
+                self.game_console.print(x, y, entity.char)
         
         # Render dialogue area
         self.render_message_log()
@@ -225,7 +234,7 @@ class Game:
             self.world.player.x = new_x
             self.world.player.y = new_y
             self.add_message(f"You move to ({new_x}, {new_y})", MessageChannel.MOVEMENT, (200, 200, 200))
-        # Note: We're using add_message instead of show_message to avoid forcing a render
+        self.update_camera()  # Update camera position after moving
 
     def run(self):
         while True:
