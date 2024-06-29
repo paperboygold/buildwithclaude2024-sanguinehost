@@ -10,6 +10,7 @@ import traceback
 from typing import Optional
 from character_cards import character_cards
 import json
+from mapgen import generate_map, TileType
 
 def setup_logging():
     logging.basicConfig(
@@ -54,6 +55,7 @@ class World:
     def __init__(self, width, height):
         self.width = width
         self.height = height
+        self.game_map = generate_map(width, height, num_rooms=10)
         self.entities = []
         self.player = None
 
@@ -64,6 +66,9 @@ class World:
 
     def get_entity_at(self, x, y):
         return next((e for e in self.entities if int(e.x) == int(x) and int(e.y) == int(y)), None)
+
+    def is_walkable(self, x, y):
+        return self.game_map.tiles[y][x] in (TileType.FLOOR, TileType.DOOR)
 
 class MessageChannel(Enum):
     COMBAT = auto()
@@ -184,18 +189,30 @@ class Game:
         self.game_console.draw_rect(1, 0, self.width - 2, 1, ord('─'))
         self.game_console.put_char(self.width - 1, 0, ord('┐'))
         
+        # Render map
+        for y in range(self.game_area_height):
+            for x in range(self.width):
+                map_x = x + self.camera_x
+                map_y = y + self.camera_y
+                if 0 <= map_x < self.world.width and 0 <= map_y < self.world.height:
+                    tile = self.world.game_map.tiles[map_y][map_x]
+                    if tile == TileType.WALL:
+                        self.game_console.print(x, y, '#', (128, 128, 128))
+                    elif tile == TileType.FLOOR:
+                        self.game_console.print(x, y, '.', (64, 64, 64))
+                    elif tile == TileType.DOOR:
+                        self.game_console.print(x, y, '+', (139, 69, 19))
+        
+        # Render entities
         for entity in self.world.entities:
             x = int(entity.x) - self.camera_x
             y = int(entity.y) - self.camera_y
-            # Only draw entities within the inner area of the game window
-            if 1 <= x < self.width - 1 and 1 <= y < self.game_area_height - 1:
+            if 0 <= x < self.width and 0 <= y < self.game_area_height:
                 self.game_console.print(x, y, entity.char)
         
         # Render dialogue area
         self.render_message_log()
-        # Draw the missing top horizontal line for the dialogue console
         self.dialogue_console.draw_rect(1, 0, self.width - 2, 1, ord('─'))
-        # Fix the top-right corner for the dialogue console
         self.dialogue_console.put_char(self.width - 1, 0, ord('┐'))
         
         # Blit game and dialogue consoles to root console
@@ -370,9 +387,9 @@ class Game:
         self.show_message("There's no one to interact with.", MessageChannel.SYSTEM, (255, 255, 0))
 
     def move_player(self, dx, dy):
-        new_x = self.world.player.x + dx
-        new_y = self.world.player.y + dy
-        if 0 <= new_x < self.world.width and 0 <= new_y < self.world.height:
+        new_x = int(self.world.player.x + dx)
+        new_y = int(self.world.player.y + dy)
+        if 0 <= new_x < self.world.width and 0 <= new_y < self.world.height and self.world.is_walkable(new_x, new_y):
             self.world.player.x = new_x
             self.world.player.y = new_y
             self.add_message(f"You move to ({new_x}, {new_y})", MessageChannel.MOVEMENT, (200, 200, 200))
@@ -409,12 +426,20 @@ def main():
     logger = logging.getLogger(__name__)
     try:
         world = World(80, 38)  # Match the game area size
-        player = Player(40, 19)
-        npc1 = NPC(42, 19, "Wise Old Man", "wise_old_man")
-        npc2 = NPC(44, 19, "Mysterious Stranger", "mysterious_stranger")
+        
+        # Find a valid starting position for the player
+        player_x, player_y = world.game_map.rooms[0].x + 1, world.game_map.rooms[0].y + 1
+        player = Player(player_x, player_y)
         world.add_entity(player)
-        world.add_entity(npc1)
-        world.add_entity(npc2)
+        
+        # Place NPCs in random rooms
+        for i, room in enumerate(world.game_map.rooms[1:3]):  # Place 2 NPCs
+            npc_x, npc_y = room.x + 1, room.y + 1
+            if i == 0:
+                npc = NPC(npc_x, npc_y, "Wise Old Man", "wise_old_man")
+            else:
+                npc = NPC(npc_x, npc_y, "Mysterious Stranger", "mysterious_stranger")
+            world.add_entity(npc)
 
         game = Game(world)
         game.run()
