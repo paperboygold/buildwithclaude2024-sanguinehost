@@ -4,13 +4,29 @@ import tcod
 import textwrap
 from tcod.event import KeySym
 from dotenv import load_dotenv
-from enum import Enum, auto  # Add this line
+from enum import Enum, auto
+import logging
+import traceback
+from typing import Optional
 
-def load_api_key():
-    load_dotenv()  # This loads the .env file
+def setup_logging():
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        filename='game.log',
+        filemode='w'
+    )
+    console = logging.StreamHandler()
+    console.setLevel(logging.WARNING)
+    formatter = logging.Formatter('%(name)-12s: %(levelname)-8s %(message)s')
+    console.setFormatter(formatter)
+    logging.getLogger('').addHandler(console)
+
+def load_api_key() -> Optional[str]:
+    load_dotenv()
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
-        print("Warning: ANTHROPIC_API_KEY not found in .env file.")
+        logging.warning("ANTHROPIC_API_KEY not found in .env file.")
         print("Please enter your Anthropic API key manually:")
         api_key = input().strip()
     return api_key
@@ -51,7 +67,7 @@ class MessageChannel(Enum):
     DIALOGUE = auto()
     SYSTEM = auto()
     IMPORTANT = auto()
-    MOVEMENT = auto()  # Add this new channel
+    MOVEMENT = auto()
 
 class Message:
     def __init__(self, text, channel, color):
@@ -61,38 +77,47 @@ class Message:
 
 class Game:
     def __init__(self, world):
-        self.world = world
-        api_key = load_api_key()
-        self.anthropic_client = anthropic.Anthropic(api_key=api_key)
-        
-        self.width = 80  # Characters wide
-        self.height = 50  # Characters high
-        self.tile_size = 16  # Pixels per character
-        self.pixel_width = self.width * self.tile_size
-        self.pixel_height = self.height * self.tile_size
-        self.game_area_height = 38  # Characters high
-        self.dialogue_height = 12  # Characters high
-        
-        self.message_log = []
-        self.max_log_messages = 100
-        self.visible_log_lines = 10
-        self.visible_channels = set(MessageChannel) - {MessageChannel.MOVEMENT}  # Filter out movement messages
-        
-        self.context = tcod.context.new_terminal(
-            self.width,
-            self.height,
-            title="Roguelike Game",
-            vsync=True,
-            tileset=tcod.tileset.load_tilesheet(
-                "assets/tiles/terminal16x16_gs_ro.png", 16, 16, tcod.tileset.CHARMAP_CP437
+        self.logger = logging.getLogger(__name__)
+        try:
+            self.world = world
+            api_key = load_api_key()
+            if not api_key:
+                raise ValueError("No API key provided")
+            self.anthropic_client = anthropic.Anthropic(api_key=api_key)
+            
+            self.width = 80  # Characters wide
+            self.height = 50  # Characters high
+            self.tile_size = 16  # Pixels per character
+            self.pixel_width = self.width * self.tile_size
+            self.pixel_height = self.height * self.tile_size
+            self.game_area_height = 38  # Characters high
+            self.dialogue_height = 12  # Characters high
+            
+            self.message_log = []
+            self.max_log_messages = 100
+            self.visible_log_lines = 10
+            self.visible_channels = set(MessageChannel) - {MessageChannel.MOVEMENT}
+            
+            self.context = tcod.context.new_terminal(
+                self.width,
+                self.height,
+                title="Roguelike Game",
+                vsync=True,
+                tileset=tcod.tileset.load_tilesheet(
+                    "assets/tiles/terminal16x16_gs_ro.png", 16, 16, tcod.tileset.CHARMAP_CP437
+                )
             )
-        )
-        self.root_console = tcod.console.Console(self.width, self.height)
-        self.game_console = tcod.console.Console(self.width, self.game_area_height)
-        self.dialogue_console = tcod.console.Console(self.width, self.dialogue_height)
-        
-        self.camera_x = 0
-        self.camera_y = 0
+            self.root_console = tcod.console.Console(self.width, self.height)
+            self.game_console = tcod.console.Console(self.width, self.game_area_height)
+            self.dialogue_console = tcod.console.Console(self.width, self.dialogue_height)
+            
+            self.camera_x = 0
+            self.camera_y = 0
+
+        except Exception as e:
+            self.logger.error(f"Error initializing game: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+            raise
 
     def update_camera(self):
         # Center the camera on the player
@@ -190,32 +215,37 @@ class Game:
                 self.render()  # Re-render to show the updated input
 
     def start_dialogue(self, npc):
-        self.show_message(f"You are now talking to {npc.name}", MessageChannel.DIALOGUE, (0, 255, 255))
-        
-        while True:
-            user_input = self.get_user_input("You: ")
-            if user_input is None:  # User pressed Escape
-                self.show_message("Dialogue ended.", MessageChannel.DIALOGUE, (0, 255, 255))
-                break
+        try:
+            self.show_message(f"You are now talking to {npc.name}", MessageChannel.DIALOGUE, (0, 255, 255))
             
-            self.show_message(f"You: {user_input}", MessageChannel.DIALOGUE, (0, 255, 255))
-            npc.dialogue_history.append({"role": "user", "content": user_input})
-            
-            try:
-                response = self.anthropic_client.messages.create(
-                    model="claude-3-5-sonnet-20240620",
-                    max_tokens=150,
-                    system=f"You are {npc.name}, an NPC in a roguelike game. Respond in character, but keep your responses brief, natural, and to the point. Avoid overly flowery or theatrical language.",
-                    messages=npc.dialogue_history
-                )
+            while True:
+                user_input = self.get_user_input("You: ")
+                if user_input is None:  # User pressed Escape
+                    self.show_message("Dialogue ended.", MessageChannel.DIALOGUE, (0, 255, 255))
+                    break
                 
-                npc_response = response.content[0].text if response.content else ""
-                npc.dialogue_history.append({"role": "assistant", "content": npc_response})
+                self.show_message(f"You: {user_input}", MessageChannel.DIALOGUE, (0, 255, 255))
+                npc.dialogue_history.append({"role": "user", "content": user_input})
                 
-                self.show_message(f"{npc.name}: {npc_response}", MessageChannel.DIALOGUE, (0, 255, 255))
-            except Exception as e:
-                self.show_message(f"Error: {str(e)}", MessageChannel.SYSTEM, (255, 0, 0))
-                break
+                try:
+                    response = self.anthropic_client.messages.create(
+                        model="claude-3-5-sonnet-20240620",
+                        max_tokens=150,
+                        system=f"You are {npc.name}, an NPC in a roguelike game. Respond in character, but keep your responses brief, natural, and to the point. Avoid overly flowery or theatrical language.",
+                        messages=npc.dialogue_history
+                    )
+                    
+                    npc_response = response.content[0].text if response.content else ""
+                    npc.dialogue_history.append({"role": "assistant", "content": npc_response})
+                    
+                    self.show_message(f"{npc.name}: {npc_response}", MessageChannel.DIALOGUE, (0, 255, 255))
+                except Exception as e:
+                    self.logger.error(f"Error in AI response: {str(e)}")
+                    self.show_message(f"Error: Unable to get NPC response", MessageChannel.SYSTEM, (255, 0, 0))
+        except Exception as e:
+            self.logger.error(f"Error in dialogue: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+            self.show_message(f"An error occurred during dialogue", MessageChannel.SYSTEM, (255, 0, 0))
 
     def interact(self):
         player_x, player_y = int(self.world.player.x), int(self.world.player.y)
@@ -236,39 +266,47 @@ class Game:
         self.update_camera()  # Update camera position after moving
 
     def run(self):
-        while True:
-            self.render()
-            for event in tcod.event.wait():
-                if event.type == "QUIT":
-                    raise SystemExit()
-                elif event.type == "KEYDOWN":
-                    if event.sym == KeySym.UP:
-                        self.move_player(0, -1)
-                    elif event.sym == KeySym.DOWN:
-                        self.move_player(0, 1)
-                    elif event.sym == KeySym.LEFT:
-                        self.move_player(-1, 0)
-                    elif event.sym == KeySym.RIGHT:
-                        self.move_player(1, 0)
-                    elif event.sym == KeySym.i:
-                        self.interact()  # Call the new interact method
-                    elif event.sym == KeySym.q:
-                        raise SystemExit()
+        try:
+            while True:
                 self.render()
+                for event in tcod.event.wait():
+                    if event.type == "QUIT":
+                        raise SystemExit()
+                    elif event.type == "KEYDOWN":
+                        if event.sym == KeySym.UP:
+                            self.move_player(0, -1)
+                        elif event.sym == KeySym.DOWN:
+                            self.move_player(0, 1)
+                        elif event.sym == KeySym.LEFT:
+                            self.move_player(-1, 0)
+                        elif event.sym == KeySym.RIGHT:
+                            self.move_player(1, 0)
+                        elif event.sym == KeySym.i:
+                            self.interact()
+                        elif event.sym == KeySym.q:
+                            raise SystemExit()
+                    self.render()
+        except Exception as e:
+            self.logger.error(f"Error in game loop: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+            self.show_message(f"An error occurred: {str(e)}", MessageChannel.SYSTEM, (255, 0, 0))
 
-# Example usage
 def main():
-    world = World(80, 38)  # Match the game area size
-    player = Player(40, 19)
-    npc = NPC(42, 19, "Wise Old Man")
-    world.add_entity(player)
-    world.add_entity(npc)
-
+    setup_logging()
+    logger = logging.getLogger(__name__)
     try:
+        world = World(80, 38)  # Match the game area size
+        player = Player(40, 19)
+        npc = NPC(42, 19, "Wise Old Man")
+        world.add_entity(player)
+        world.add_entity(npc)
+
         game = Game(world)
         game.run()
     except Exception as e:
-        print(f"An error occurred: {e}")
+        logger.error(f"An error occurred: {str(e)}")
+        logger.debug(traceback.format_exc())
+        print(f"A critical error occurred. Please check the game.log file for details.")
 
 if __name__ == "__main__":
     main()
