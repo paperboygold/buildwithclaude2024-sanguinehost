@@ -102,11 +102,13 @@ class Map:
                 self.fov_map.transparent[y, x] = not self.tiles[y][x].block_sight
                 self.fov_map.walkable[y, x] = not self.tiles[y][x].blocked
 
-    def compute_fov(self, x, y, radius, light_walls=True, algorithm=libtcodpy.FOV_RESTRICTIVE):
+    def compute_fov(self, x, y, radius, light_walls=True, algorithm=0):
         self.fov_map.compute_fov(x, y, radius, light_walls, algorithm)
 
     def is_in_fov(self, x, y):
-        return self.fov_map.fov[y, x]
+        if 0 <= x < self.width and 0 <= y < self.height:
+            return self.fov_map.fov[y, x]
+        return False
 
     def generate(self, num_rooms, min_size=5, max_size=10):
         for _ in range(num_rooms):

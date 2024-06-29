@@ -11,6 +11,7 @@ from typing import Optional
 from character_cards import character_cards
 import json
 from mapgen import generate_map, TileType, Tile
+import random
 
 def setup_logging():
     logging.basicConfig(
@@ -50,14 +51,41 @@ class NPC(Entity):
         super().__init__(x, y, 'N', name)
         self.character_card = character_cards.get(character_card_key, "")
         self.dialogue_history = []
+        self.knowledge = NPCKnowledge()
+
+class NPCKnowledge:
+    def __init__(self):
+        self.known_npcs = {}
+        self.known_locations = set()
+
+    def add_npc(self, npc_name, relationship="stranger", relationship_story=""):
+        self.known_npcs[npc_name] = {"relationship": relationship, "story": relationship_story}
+
+    def update_relationship(self, npc_name, relationship, relationship_story=""):
+        if npc_name in self.known_npcs:
+            self.known_npcs[npc_name]["relationship"] = relationship
+            if relationship_story:
+                self.known_npcs[npc_name]["story"] = relationship_story
+
+    def add_location(self, location):
+        self.known_locations.add(location)
+
+    def get_summary(self):
+        npc_info = ", ".join([f"{name} ({info['relationship']})" for name, info in self.known_npcs.items()])
+        location_info = ", ".join(self.known_locations)
+        return f"Known NPCs: {npc_info}. Known locations: {location_info}."
+
+    def get_relationship_story(self, npc_name):
+        return self.known_npcs.get(npc_name, {}).get("story", "")
 
 class World:
-    def __init__(self, width, height):
+    def __init__(self, width, height, game):
         self.width = width
         self.height = height
         self.game_map = generate_map(width, height, num_rooms=10)
         self.entities = []
         self.player = None
+        self.game = game
 
     def add_entity(self, entity):
         if isinstance(entity, Player):
@@ -69,6 +97,50 @@ class World:
 
     def is_walkable(self, x, y):
         return self.game_map.tiles[y][x].tile_type in (TileType.FLOOR, TileType.DOOR)
+
+    def update_npc_knowledge(self):
+        for npc in [entity for entity in self.entities if isinstance(entity, NPC)]:
+            for other_npc in [e for e in self.entities if isinstance(e, NPC) and e != npc]:
+                if self.game_map.is_in_fov(int(npc.x), int(npc.y)) and self.game_map.is_in_fov(int(other_npc.x), int(other_npc.y)):
+                    npc.knowledge.add_npc(other_npc.name)
+            
+            current_room = next((room for room in self.game_map.rooms if room.x <= npc.x < room.x + room.width and room.y <= npc.y < room.y + room.height), None)
+            if current_room:
+                npc.knowledge.add_location(f"Room at ({current_room.x}, {current_room.y})")
+
+    def generate_npc_relationships(self):
+        npc_entities = [entity for entity in self.entities if isinstance(entity, NPC)]
+        for i, npc1 in enumerate(npc_entities):
+            for npc2 in npc_entities[i+1:]:
+                if random.random() < 1.0:  # 100% chance of a relationship
+                    relationship_type = random.choice([
+                        "friend", "rival", "mentor", "student", "ally", "enemy",
+                        "acquaintance", "family", "colleague", "stranger"
+                    ])
+                    relationship_story = self.generate_relationship_story(npc1, npc2, relationship_type)
+                    npc1.knowledge.add_npc(npc2.name, relationship_type, relationship_story)
+                    npc2.knowledge.add_npc(npc1.name, relationship_type, relationship_story)
+
+    def generate_relationship_story(self, npc1, npc2, relationship_type):
+        prompt = f"Generate a very brief story (1-2 sentences) about the {relationship_type} relationship between {npc1.name} and {npc2.name}. {npc1.name}'s character: {npc1.character_card}. {npc2.name}'s character: {npc2.character_card}."
+        
+        self.game.logger.info(f"Generating relationship story for {npc1.name} and {npc2.name}")
+        self.game.logger.debug(f"Relationship story prompt: {prompt}")
+        
+        try:
+            response = self.game.anthropic_client.messages.create(
+                model="claude-3-5-sonnet-20240620",
+                max_tokens=100,  # Increased from 50 to 100
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7
+            )
+            story = response.content[0].text.strip()
+            self.game.logger.info(f"Generated relationship story: {story}")
+            return story
+        except Exception as e:
+            self.game.logger.error(f"Error generating relationship story: {str(e)}")
+            self.game.logger.debug(traceback.format_exc())
+            return f"{npc1.name} and {npc2.name} have a {relationship_type} relationship."
 
 class MessageChannel(Enum):
     COMBAT = auto()
@@ -303,32 +375,41 @@ class Game:
 
     def start_dialogue(self, npc):
         try:
+            self.logger.info(f"Starting dialogue with {npc.name}")
             self.show_message(f"You are now talking to {npc.name}", MessageChannel.DIALOGUE, (0, 255, 255))
             
             while True:
                 user_input = self.get_user_input("You: ")
                 if user_input is None:  # User pressed Escape
+                    self.logger.info(f"Dialogue with {npc.name} ended by user")
                     self.show_message("Dialogue ended.", MessageChannel.DIALOGUE, (0, 255, 255))
                     break
-                
+            
+                self.logger.debug(f"User input: {user_input}")
                 self.show_message(f"You: {user_input}", MessageChannel.DIALOGUE, (0, 255, 0))
-                
+            
                 npc.dialogue_history.append({"role": "user", "content": user_input})
                 
                 try:
+                    relationship_info = ""
+                    if npc.knowledge.known_npcs:
+                        other_npc_name, relationship_data = next(iter(npc.knowledge.known_npcs.items()))
+                        relationship = relationship_data["relationship"]
+                        relationship_story = relationship_data["story"]
+                        relationship_info = f"You have a {relationship} relationship with {other_npc_name}. {relationship_story} "
+
                     system_prompt = f"""You are {npc.name}, an NPC in a roguelike game. Character: {npc.character_card}
-Respond in character with extremely brief responses, typically 1-2 short sentences or 10 words or less. Be concise and direct.
+Environmental knowledge: {npc.knowledge.get_summary()}
+{relationship_info}Respond in character with extremely brief responses, typically 1-2 short sentences or 10 words or less. Be concise and direct.
 Important: Speak only in dialogue. Do not describe actions, appearances, use asterisks or quotation marks. Simply respond with what your character would say."""
                     
-                    # Log the request to the API
                     self.logger.info(f"API Request for {npc.name}:")
                     self.logger.info(f"System Prompt: {system_prompt}")
-                    self.logger.info(f"Messages: {json.dumps(npc.dialogue_history, indent=2)}")
+                    self.logger.debug(f"Dialogue history: {json.dumps(npc.dialogue_history, indent=2)}")
                     
-                    # Prepare the request body
                     request_body = {
                         "model": "claude-3-5-sonnet-20240620",
-                        "max_tokens": 50,  # Reduce max tokens
+                        "max_tokens": 50,
                         "messages": npc.dialogue_history,
                         "system": system_prompt,
                         "temperature": 0.7,
@@ -339,7 +420,6 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
                     
                     response = self.anthropic_client.messages.create(**request_body)
                     
-                    # Log the response from the API
                     self.logger.info(f"API Response for {npc.name}:")
                     self.logger.info(f"Response: {json.dumps(response.model_dump(), indent=2)}")
                     
@@ -429,6 +509,7 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
     def run(self):
         try:
             while True:
+                self.world.update_npc_knowledge()  # Add this line
                 self.render()
                 for event in tcod.event.wait():
                     if event.type == "QUIT":
@@ -456,8 +537,10 @@ def main():
     setup_logging()
     logger = logging.getLogger(__name__)
     try:
-        world = World(80, 38)  # Match the game area size
-        
+        game = Game(None)  # Create Game instance with None as world
+        world = World(80, 38, game)  # Pass game to World
+        game.world = world  # Set the world for the game
+
         # Find a valid starting position for the player
         player_x, player_y = world.game_map.rooms[0].x + 1, world.game_map.rooms[0].y + 1
         player = Player(player_x, player_y)
@@ -472,7 +555,8 @@ def main():
                 npc = NPC(npc_x, npc_y, "Mysterious Stranger", "mysterious_stranger")
             world.add_entity(npc)
 
-        game = Game(world)
+        world.generate_npc_relationships()
+
         game.run()
     except Exception as e:
         logger.error(f"An error occurred: {str(e)}")
