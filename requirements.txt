@@ -1,0 +1,3 @@
+anthropic
+tcod
+python-dotenv
