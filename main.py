@@ -182,37 +182,52 @@ class Game:
 
     def get_user_input(self, prompt):
         user_input = ""
-        max_input_length = self.width - len(prompt) - 3
-        input_message = f"{prompt}{user_input}_"
-        
-        # Add an initial empty input line to the log
-        self.add_message(input_message, MessageChannel.SYSTEM, (255, 255, 255))
-        
+        max_input_length = self.width * 3  # Allow for multiple lines
+        input_lines = []
+        cursor_pos = 0
+
         while True:
-            self.render()  # Render the game state
+            # Wrap the current input
+            wrapped_lines = textwrap.wrap(prompt + user_input, width=self.width - 2)
             
+            # Update the message log with the wrapped input
+            self.message_log = self.message_log[:-len(input_lines)] if input_lines else self.message_log
+            input_lines = [Message(line, MessageChannel.SYSTEM, (255, 255, 255)) for line in wrapped_lines]
+            self.message_log.extend(input_lines)
+
+            # Ensure we don't exceed the visible log lines
+            while len(self.message_log) > self.visible_log_lines:
+                self.message_log.pop(0)
+
+            self.render()  # Render the game state
+
             for event in tcod.event.wait():
                 if event.type == "QUIT":
                     raise SystemExit()
                 elif event.type == "KEYDOWN":
                     if event.sym == KeySym.RETURN and user_input:
-                        # Remove the input line from the log
-                        self.message_log.pop()
+                        # Remove temporary input lines
+                        self.message_log = self.message_log[:-len(input_lines)]
+                        # Add the final input as a single message
+                        self.add_message(prompt + user_input, MessageChannel.DIALOGUE, (0, 255, 255))
                         return user_input
                     elif event.sym == KeySym.BACKSPACE:
-                        user_input = user_input[:-1]
+                        if user_input:
+                            user_input = user_input[:cursor_pos-1] + user_input[cursor_pos:]
+                            cursor_pos = max(0, cursor_pos - 1)
                     elif event.sym == KeySym.ESCAPE:
-                        # Remove the input line from the log
-                        self.message_log.pop()
+                        self.message_log = self.message_log[:-len(input_lines)]
                         return None
                 elif event.type == "TEXTINPUT":
                     if len(user_input) < max_input_length:
-                        user_input += event.text
-                
-                # Update the last message in the log with the current input
-                input_message = f"{prompt}{user_input}_"
-                self.message_log[-1] = Message(input_message, MessageChannel.SYSTEM, (255, 255, 255))
-                self.render()  # Re-render to show the updated input
+                        user_input = user_input[:cursor_pos] + event.text + user_input[cursor_pos:]
+                        cursor_pos += len(event.text)
+
+            # Add cursor to the end of the last line
+            if input_lines:
+                last_line = input_lines[-1].text
+                cursor_line = last_line[:cursor_pos] + "_" + last_line[cursor_pos:]
+                self.message_log[-1] = Message(cursor_line, MessageChannel.SYSTEM, (255, 255, 255))
 
     def start_dialogue(self, npc):
         try:
@@ -224,7 +239,6 @@ class Game:
                     self.show_message("Dialogue ended.", MessageChannel.DIALOGUE, (0, 255, 255))
                     break
                 
-                self.show_message(f"You: {user_input}", MessageChannel.DIALOGUE, (0, 255, 255))
                 npc.dialogue_history.append({"role": "user", "content": user_input})
                 
                 try:
