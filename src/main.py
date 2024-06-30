@@ -6,20 +6,17 @@ from tcod.event import KeySym
 import logging
 import traceback
 import json
-from utils.mapgen import generate_map, TileType
 import random
 import time
-from ecs.ecs import Entity, Component
+from ecs.ecs import Entity
 from components.ActorComponent import ActorComponent
 from components.PositionComponent import PositionComponent
 from components.RenderComponent import RenderComponent
-from components.WorldStateComponent import WorldStateComponent
 from entities.Player import Player
 from entities.Actor import Actor
 from utils.logging import setup_logging
 from utils.load_api_key import load_api_key
 from systems.MessageSystem import MessageSystem, MessageChannel, Message
-from systems.ActorKnowledgeSystem import ActorKnowledgeSystem
 from systems.RenderSystem import RenderSystem
 from world import World
 
@@ -63,41 +60,55 @@ class Game:
                 raise ValueError("No API key provided")
             self.anthropic_client = anthropic.Anthropic(api_key=api_key)
             
-            self.width = 80  # Characters wide
-            self.height = 50  # Characters high
-            self.tile_size = 16  # Pixels per character
-            self.pixel_width = self.width * self.tile_size
-            self.pixel_height = self.height * self.tile_size
-            self.game_area_height = 38  # Characters high
-            self.dialogue_height = 12  # Characters high
+            # Initialize game dimensions and consoles
+            self.initialize_game_dimensions()
+            self.initialize_consoles()
             
-            self.message_system = MessageSystem()
-            self.max_log_messages = 100
-            self.visible_log_lines = 10
-            self.visible_channels = set(MessageChannel) - {MessageChannel.MOVEMENT}
+            # Initialize message system
+            self.initialize_message_system()
             
-            self.context = tcod.context.new_terminal(
-                self.width,
-                self.height,
-                title="Sanguine Host",
-                vsync=True,
-                tileset=tcod.tileset.load_tilesheet(
-                    "assets/tiles/terminal16x16_gs_ro.png", 16, 16, tcod.tileset.CHARMAP_CP437
-                )
-            )
-            self.root_console = tcod.console.Console(self.width, self.height)
-            self.game_console = tcod.console.Console(self.width, self.game_area_height)
-            self.dialogue_console = tcod.console.Console(self.width, self.dialogue_height)
-            
-            self.camera_x = 0
-            self.camera_y = 0
-            self.fov_radius = 10
-            self.fov_recompute = True
+            # Initialize camera and FOV
+            self.initialize_camera_and_fov()
 
         except Exception as e:
             self.logger.error(f"Error initializing game: {str(e)}")
             self.logger.debug(traceback.format_exc())
             raise
+
+    def initialize_game_dimensions(self):
+        self.width = 80  # Characters wide
+        self.height = 50  # Characters high
+        self.tile_size = 16  # Pixels per character
+        self.pixel_width = self.width * self.tile_size
+        self.pixel_height = self.height * self.tile_size
+        self.game_area_height = 38  # Characters high
+        self.dialogue_height = 12  # Characters high
+
+    def initialize_consoles(self):
+        self.context = tcod.context.new_terminal(
+            self.width,
+            self.height,
+            title="Sanguine Host",
+            vsync=True,
+            tileset=tcod.tileset.load_tilesheet(
+                "assets/tiles/terminal16x16_gs_ro.png", 16, 16, tcod.tileset.CHARMAP_CP437
+            )
+        )
+        self.root_console = tcod.console.Console(self.width, self.height)
+        self.game_console = tcod.console.Console(self.width, self.game_area_height)
+        self.dialogue_console = tcod.console.Console(self.width, self.dialogue_height)
+
+    def initialize_message_system(self):
+        self.message_system = MessageSystem()
+        self.max_log_messages = 100
+        self.visible_log_lines = 10
+        self.visible_channels = set(MessageChannel) - {MessageChannel.MOVEMENT}
+
+    def initialize_camera_and_fov(self):
+        self.camera_x = 0
+        self.camera_y = 0
+        self.fov_radius = 10
+        self.fov_recompute = True
 
     def initialize_render_system(self):
         self.render_system = RenderSystem(
