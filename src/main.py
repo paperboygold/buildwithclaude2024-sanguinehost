@@ -18,6 +18,7 @@ from entities.Actor import Actor
 from utils.logging import setup_logging
 from utils.load_api_key import load_api_key
 from systems.MessageSystem import MessageSystem, MessageChannel, Message
+from systems.ActorKnowledgeSystem import ActorKnowledgeSystem
 
 class GameEntity(Entity):
     def __init__(self, x: float, y: float, char: str, name: str):
@@ -82,6 +83,7 @@ class World:
         self.entities = []
         self.player = None
         self.game = game
+        self.actor_knowledge_system = ActorKnowledgeSystem(game)
 
     def add_entity(self, entity):
         if isinstance(entity, Player):
@@ -94,57 +96,10 @@ class World:
     def is_walkable(self, x, y):
         return self.game_map.is_walkable(x, y)
 
-    def update_actor_knowledge(self):
-        for actor in [entity for entity in self.entities if isinstance(entity, Actor)]:
-            for other_actor in [e for e in self.entities if isinstance(e, Actor) and e != actor]:
-                if self.game_map.is_in_fov(int(actor.x), int(actor.y)) and self.game_map.is_in_fov(int(other_actor.x), int(other_actor.y)):
-                    actor.knowledge.add_actor(other_actor.name)
-            
-            current_room = next((room for room in self.game_map.rooms if room.x <= actor.x < room.x + room.width and room.y <= actor.y < room.y + room.height), None)
-            if current_room:
-                actor.knowledge.add_location(f"Room at ({current_room.x}, {current_room.y})")
-
     def update_actors(self):
         for entity in self.entities:
             if isinstance(entity, Actor):
                 entity.update(self.game_map)
-
-    def generate_actor_relationships(self):
-        actor_entities = [entity for entity in self.entities if isinstance(entity, Actor)]
-        for i, actor1 in enumerate(actor_entities):
-            for actor2 in actor_entities[i+1:]:
-                relationship_type = "stranger"
-                if random.random() < 0.5:  # 50% chance of a non-stranger relationship
-                    relationship_type = random.choice([
-                        "friend", "rival", "mentor", "student", "ally", "enemy",
-                        "acquaintance", "family", "colleague"
-                    ])
-                relationship_story = self.generate_relationship_story(actor1, actor2, relationship_type)
-                actor1.knowledge.add_actor(actor2.name, relationship_type, relationship_story)
-                actor2.knowledge.add_actor(actor1.name, relationship_type, relationship_story)
-
-    def generate_relationship_story(self, actor1, actor2, relationship_type):
-        actor1_component = actor1.get_component(ActorComponent)
-        actor2_component = actor2.get_component(ActorComponent)
-        prompt = f"Generate a very brief story (1-2 sentences) about the {relationship_type} relationship between {actor1.name} and {actor2.name}. {actor1.name}'s character: {actor1_component.character_card}. {actor2.name}'s character: {actor2_component.character_card}."
-        
-        self.game.logger.info(f"Generating relationship story for {actor1.name} and {actor2.name}")
-        self.game.logger.debug(f"Relationship story prompt: {prompt}")
-        
-        try:
-            response = self.game.anthropic_client.messages.create(
-                model="claude-3-5-sonnet-20240620",
-                max_tokens=100,  # Increased from 50 to 100
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.7
-            )
-            story = response.content[0].text.strip()
-            self.game.logger.info(f"Generated relationship story: {story}")
-            return story
-        except Exception as e:
-            self.game.logger.error(f"Error generating relationship story: {str(e)}")
-            self.game.logger.debug(traceback.format_exc())
-            return f"{actor1.name} and {actor2.name} have a {relationship_type} relationship."
 
     def get_potential_actor_interactions(self):
         actor_entities = [entity for entity in self.entities if isinstance(entity, Actor)]
@@ -613,7 +568,6 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
         try:
             self.logger.info("Starting game loop")
             while True:
-                self.world.update_actor_knowledge()
                 self.world.update_actors()
                 self.render()
                 
@@ -644,7 +598,7 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
                         
                         if action_taken:
                             self.logger.debug("Updating actor knowledge and positions")
-                            self.world.update_actor_knowledge()
+                            self.world.actor_knowledge_system.update(self.world.entities)
                             self.world.update_actors()
                             
                             self.logger.debug("Checking for potential actor interactions")
@@ -686,7 +640,7 @@ def main():
                 actor = Actor(actor_x, actor_y, "Mysterious Stranger", "mysterious_stranger")
             world.add_entity(actor)
 
-        world.generate_actor_relationships()
+        world.actor_knowledge_system.generate_actor_relationships(world.entities)
 
         game.run()
     except Exception as e:
