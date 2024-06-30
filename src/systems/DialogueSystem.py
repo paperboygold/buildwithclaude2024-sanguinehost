@@ -291,6 +291,23 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
             # Increment the conversation turn counter for the current actor
             current_actor.get_component(ActorComponent).conversation_turns += 1
 
+            # Check if the conversation should end
+            if actor1_component.conversation_turns + actor2_component.conversation_turns >= 6:
+                # End the conversation
+                conversation_history = actor1_component.current_conversation
+                self.end_actor_conversation(actor1, actor2)
+
+                # Generate summary separately
+                summary = self.generate_conversation_summary(actor1, actor2, conversation_history)
+
+                # Add the summary to both actors' memories
+                self.add_conversation_memory(actor1, actor2, summary)
+
+                if player_can_see:
+                    self.game.show_message(f"Conversation summary: {summary}", MessageChannel.DIALOGUE)
+
+                return
+
         except Exception as e:
             self.logger.error(f"Error in continuing actor dialogue: {str(e)}")
             self.logger.debug(traceback.format_exc())
@@ -301,12 +318,6 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
         actor1_component = actor1.get_component(ActorComponent)
         actor2_component = actor2.get_component(ActorComponent)
         
-        # Summarize the conversation
-        if actor1_component.current_conversation:
-            summary = self.summarize_full_conversation(actor1, actor2, actor1_component.current_conversation)
-            self.add_conversation_memory(actor1, actor2, summary)
-            self.logger.info(f"Conversation summary between {actor1.name} and {actor2.name}: {summary}")
-
         actor1_component.current_conversation = None
         actor2_component.current_conversation = None
         actor1_component.conversation_partner = None
@@ -320,6 +331,31 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
         
         if player_can_see:
             self.game.show_message(f"{actor1.name} and {actor2.name} have ended their conversation.", MessageChannel.DIALOGUE)
+
+    def generate_conversation_summary(self, actor1, actor2, conversation_history):
+        try:
+            self.logger.info(f"Generating summary for conversation between {actor1.name} and {actor2.name}")
+            system_prompt = f"""Summarize the conversation between {actor1.name} and {actor2.name} in a dungeon setting.
+            Provide a single sentence summary of their conversation, focusing on the main topic or outcome.
+            Do not include any dialogue or character actions in your summary."""
+
+            request_body = {
+                "model": "claude-3-5-sonnet-20240620",
+                "max_tokens": 100,
+                "messages": conversation_history + [{"role": "user", "content": "Summarize the conversation."}],
+                "system": system_prompt,
+                "temperature": 0.7
+            }
+            
+            response = self.anthropic_client.messages.create(**request_body)
+            summary = response.content[0].text if response.content else ""
+            self.logger.info(f"Generated summary: {summary}")
+            return summary
+
+        except Exception as e:
+            self.logger.error(f"Error in generating conversation summary: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+            return "The conversation ended without a clear summary."
 
     def get_user_input(self, prompt):
         user_input = ""
