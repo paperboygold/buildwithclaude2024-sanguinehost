@@ -19,6 +19,63 @@ Key components:
 2. **AI Integration**: Anthropic's API is used to communicate with Claude 3.5 for NPC dialogues.
 3. **Dynamic Messaging System**: Handles various types of in-game messages and renders them appropriately.
 
+## Project Structure
+
+Sanguine Host follows an Entity Component System (ECS) architecture:
+
+- `src/`: Main source code directory
+  - `ecs/`: Core ECS implementation
+  - `entities/`: Game entities (Player, Actor, etc.)
+  - `components/`: Components for entities
+  - `systems/`: Game systems (Dialogue, Input, Render, etc.)
+  - `utils/`: Utility functions and helpers
+- `assets/`: Game assets (tiles, etc.)
+- `data/`: Game data (character cards, etc.)
+
+## Architecture
+
+Sanguine Host uses an Entity Component System (ECS) architecture, which provides:
+- Flexibility in defining game objects
+- Improved performance through data-oriented design
+- Easy extension of game functionality
+
+## Installation
+
+1. Ensure you have Python 3.8+ installed
+2. Clone the repository
+3. Create a virtual environment:
+   ```
+   python -m venv .venv
+   source .venv/bin/activate  # On Windows, use `.venv\Scripts\activate`
+   ```
+4. Install dependencies:
+   ```
+   pip install -r requirements.txt
+   ```
+5. Set up your Anthropic API key in a `.env` file
+6. Run the game:
+   ```
+   python src/main.py
+   ```
+
+## Development
+
+To contribute to Sanguine Host:
+
+1. Fork the repository
+2. Create a new branch for your feature
+3. Implement your changes, following the existing code style
+4. Write tests for your additions
+5. Submit a pull request with a clear description of your changes
+
+## AI Integration
+
+Sanguine Host leverages Claude 3.5 to create dynamic NPC interactions:
+- NPCs have unique personalities and knowledge
+- Conversations adapt based on game state and player actions
+- AI generates relationship stories between NPCs
+- Dialogue is context-aware and maintains consistency throughout the game
+
 ## Getting Started
 
 1. Clone this repository
