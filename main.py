@@ -14,6 +14,7 @@ from mapgen import generate_map, TileType, Tile
 import random
 from dijkstra_map import DijkstraMap
 import time
+from ecs import Entity, Component
 
 def setup_logging():
     logging.basicConfig(
@@ -37,14 +38,47 @@ def load_api_key() -> Optional[str]:
         api_key = input().strip()
     return api_key
 
-class Entity:
-    def __init__(self, x, y, char, name):
-        self.x = float(x)
-        self.y = float(y)
+class PositionComponent(Component):
+    def __init__(self, x: float, y: float):
+        self.x = x
+        self.y = y
+
+class RenderComponent(Component):
+    def __init__(self, char: str, name: str):
         self.char = char
         self.name = name
 
-class Player(Entity):
+class GameEntity(Entity):
+    def __init__(self, x: float, y: float, char: str, name: str):
+        super().__init__()
+        self.add_component(PositionComponent(x, y))
+        self.add_component(RenderComponent(char, name))
+
+    @property
+    def x(self):
+        return self.get_component(PositionComponent).x
+
+    @x.setter
+    def x(self, value):
+        self.get_component(PositionComponent).x = value
+
+    @property
+    def y(self):
+        return self.get_component(PositionComponent).y
+
+    @y.setter
+    def y(self, value):
+        self.get_component(PositionComponent).y = value
+
+    @property
+    def char(self):
+        return self.get_component(RenderComponent).char
+
+    @property
+    def name(self):
+        return self.get_component(RenderComponent).name
+
+class Player(GameEntity):
     def __init__(self, x, y):
         super().__init__(x, y, '@', 'Player')
 
@@ -54,7 +88,7 @@ class NPCState(Enum):
     ALERT = auto()
     FLEE = auto()
 
-class NPC(Entity):
+class NPC(GameEntity):
     def __init__(self, x, y, name, character_card_key):
         super().__init__(x, y, 'N', name)
         self.character_card = character_cards.get(character_card_key, "")
