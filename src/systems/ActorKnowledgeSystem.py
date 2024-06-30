@@ -9,10 +9,15 @@ class ActorKnowledgeSystem(System):
     def __init__(self, game):
         self.game = game
         self.logger = logging.getLogger(__name__)
+        self.relationships_generated = False
 
     def update(self, entities):
         self.update_actor_knowledge(entities)
-        self.generate_actor_relationships(entities)
+
+    def generate_initial_relationships(self, entities):
+        if not self.relationships_generated:
+            self.generate_actor_relationships(entities)
+            self.relationships_generated = True
 
     def update_actor_knowledge(self, entities):
         for actor in [entity for entity in entities if isinstance(entity, Actor)]:

@@ -9,10 +9,11 @@ import json
 from utils.mapgen import generate_map, TileType
 import random
 import time
-from ecs.ecs import Entity
+from ecs.ecs import Entity, Component
 from components.ActorComponent import ActorComponent
 from components.PositionComponent import PositionComponent
 from components.RenderComponent import RenderComponent
+from components.WorldStateComponent import WorldStateComponent
 from entities.Player import Player
 from entities.Actor import Actor
 from utils.logging import setup_logging
@@ -50,31 +51,6 @@ class GameEntity(Entity):
     @property
     def name(self):
         return self.get_component(RenderComponent).name
-
-class WorldState:
-    def __init__(self):
-        self.player_actions = []
-        self.discovered_areas = set()
-        self.defeated_enemies = []
-        self.acquired_items = []
-
-    def update(self, action, data):
-        if action == "move":
-            self.player_actions.append(f"Moved to {data}")
-        elif action == "discover":
-            self.discovered_areas.add(data)
-        elif action == "defeat":
-            self.defeated_enemies.append(data)
-        elif action == "acquire":
-            self.acquired_items.append(data)
-
-    def get_summary(self):
-        return f"""
-Player Actions: {', '.join(self.player_actions[-5:])}
-Discovered Areas: {', '.join(self.discovered_areas)}
-Defeated Enemies: {', '.join(self.defeated_enemies[-5:])}
-Acquired Items: {', '.join(self.acquired_items[-5:])}
-"""
 
 class Game:
     def __init__(self, world):
@@ -606,7 +582,7 @@ def main():
                 actor = Actor(actor_x, actor_y, "Mysterious Stranger", "mysterious_stranger")
             world.add_entity(actor)
 
-        world.actor_knowledge_system.generate_actor_relationships(world.entities)
+        world.actor_knowledge_system.generate_initial_relationships(world.entities)
 
         game.run()
     except Exception as e:
