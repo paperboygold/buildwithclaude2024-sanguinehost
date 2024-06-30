@@ -70,6 +70,7 @@ class NPC(Entity):
         self.conversation_partner = None
         self.conversation_turns = 0
         self.color = (random.randint(100, 255), random.randint(100, 255), random.randint(100, 255))
+        self.dialogue_history = []
 
     def update(self, game_map):
         current_time = time.time()
