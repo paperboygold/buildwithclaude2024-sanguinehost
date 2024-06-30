@@ -3,7 +3,6 @@ import anthropic
 import tcod
 import textwrap
 from tcod.event import KeySym
-from enum import Enum, auto
 import logging
 import traceback
 import json
@@ -18,6 +17,7 @@ from entities.Player import Player
 from entities.Actor import Actor
 from utils.logging import setup_logging
 from utils.load_api_key import load_api_key
+from systems.MessageSystem import MessageSystem, MessageChannel, Message
 
 class GameEntity(Entity):
     def __init__(self, x: float, y: float, char: str, name: str):
@@ -48,19 +48,6 @@ class GameEntity(Entity):
     @property
     def name(self):
         return self.get_component(RenderComponent).name
-
-class MessageChannel(Enum):
-    COMBAT = auto()
-    DIALOGUE = auto()
-    SYSTEM = auto()
-    IMPORTANT = auto()
-    MOVEMENT = auto()
-
-class Message:
-    def __init__(self, text, channel, color):
-        self.text = text
-        self.channel = channel
-        self.color = color
 
 class WorldState:
     def __init__(self):
@@ -186,7 +173,7 @@ class Game:
             self.game_area_height = 38  # Characters high
             self.dialogue_height = 12  # Characters high
             
-            self.message_log = []
+            self.message_system = MessageSystem()
             self.max_log_messages = 100
             self.visible_log_lines = 10
             self.visible_channels = set(MessageChannel) - {MessageChannel.MOVEMENT}
@@ -220,20 +207,12 @@ class Game:
         self.camera_y = int(self.world.player.y - self.game_area_height // 2)
         self.logger.debug(f"Updating camera position to ({self.camera_x}, {self.camera_y})")
 
-    def add_message(self, text, channel=MessageChannel.SYSTEM, color=(255, 255, 255)):
-        if channel in self.visible_channels:
-            message = Message(text, channel, color)
-            self.message_log.append(message)
-            if len(self.message_log) > self.max_log_messages:
-                self.message_log.pop(0)
-        self.logger.debug(f"Adding message: {text} (Channel: {channel}, Color: {color})")
-
     def render_message_log(self):
         self.dialogue_console.clear()
         self.dialogue_console.draw_frame(0, 0, self.width, self.dialogue_height, ' ')
 
         y = self.dialogue_height - 2
-        for message in reversed(self.message_log[-self.visible_log_lines:]):
+        for message in self.message_system.get_visible_messages():
             wrapped_text = textwrap.wrap(message.text, self.width - 2)
             for line in reversed(wrapped_text):
                 if y < 1:
@@ -314,7 +293,7 @@ class Game:
             color = (0, 255, 255)  # Default dialogue color if no sender specified
         elif not color:
             color = (255, 255, 255)  # Default white color for other messages
-        self.add_message(text, channel, color)
+        self.message_system.add_message(text, channel, color)
         self.render()
 
     def get_user_input(self, prompt):
@@ -329,13 +308,13 @@ class Game:
             wrapped_lines = textwrap.wrap(prompt + user_input, width=self.width - 2)
             
             # Update the message log with the wrapped input
-            self.message_log = self.message_log[:-len(input_lines)] if input_lines else self.message_log
+            self.message_system.message_log = self.message_system.message_log[:-len(input_lines)] if input_lines else self.message_system.message_log
             input_lines = [Message(line, MessageChannel.SYSTEM, (0, 255, 0)) for line in wrapped_lines]  # Change color to green
-            self.message_log.extend(input_lines)
+            self.message_system.message_log.extend(input_lines)
 
             # Ensure we don't exceed the visible log lines
-            while len(self.message_log) > self.visible_log_lines:
-                self.message_log.pop(0)
+            while len(self.message_system.message_log) > self.visible_log_lines:
+                self.message_system.message_log.pop(0)
 
             self.render()  # Render the game state
 
@@ -345,7 +324,7 @@ class Game:
                 elif event.type == "KEYDOWN":
                     if event.sym == KeySym.RETURN and user_input:
                         # Remove temporary input lines
-                        self.message_log = self.message_log[:-len(input_lines)]
+                        self.message_system.message_log = self.message_system.message_log[:-len(input_lines)]
                         # Don't add the final input as a message here
                         return user_input
                     elif event.sym == KeySym.BACKSPACE:
@@ -353,7 +332,7 @@ class Game:
                             user_input = user_input[:cursor_pos-1] + user_input[cursor_pos:]
                             cursor_pos = max(0, cursor_pos - 1)
                     elif event.sym == KeySym.ESCAPE:
-                        self.message_log = self.message_log[:-len(input_lines)]
+                        self.message_system.message_log = self.message_system.message_log[:-len(input_lines)]
                         return None
                 elif event.type == "TEXTINPUT":
                     if len(user_input) < max_input_length:
@@ -367,7 +346,7 @@ class Game:
             if input_lines:
                 last_line = input_lines[-1].text
                 cursor_line = last_line[:cursor_pos] + "_" + last_line[cursor_pos:]
-                self.message_log[-1] = Message(cursor_line, MessageChannel.SYSTEM, (0, 255, 0))  # Change color to green
+                self.message_system.message_log[-1] = Message(cursor_line, MessageChannel.SYSTEM, (0, 255, 0))  # Change color to green
 
     def start_dialogue(self, actor):
         try:
@@ -623,7 +602,7 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
         if self.world.game_map.is_walkable(new_x, new_y):
             self.world.player.x = new_x
             self.world.player.y = new_y
-            self.add_message(f"You move to ({new_x}, {new_y})", MessageChannel.MOVEMENT, (200, 200, 200))
+            self.message_system.add_message(f"You move to ({new_x}, {new_y})", MessageChannel.MOVEMENT, (200, 200, 200))
             self.fov_recompute = True
             self.logger.debug(f"Player moved to ({new_x}, {new_y})")
         else:
@@ -656,7 +635,7 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
                             self.move_player(1, 0)
                             action_taken = True
                         elif event.sym == tcod.event.KeySym.PERIOD:
-                            self.add_message("You wait for a moment.", MessageChannel.SYSTEM)
+                            self.message_system.add_message("You wait for a moment.", MessageChannel.SYSTEM)
                             action_taken = True
                         elif event.sym == tcod.event.KeySym.i:
                             self.interact()
