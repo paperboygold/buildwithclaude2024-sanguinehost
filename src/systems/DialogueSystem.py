@@ -75,6 +75,16 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
                     self.logger.error(f"Error in AI response: {str(e)}")
                     self.logger.debug(traceback.format_exc())
                     self.game.show_message(f"Error: Unable to get NPC response", MessageChannel.SYSTEM, (255, 0, 0))
+
+            # Summarize the conversation
+            if actor_component.dialogue_history:
+                summary = self.summarize_full_conversation(self.game.world.player, actor, actor_component.dialogue_history)
+                self.add_conversation_memory(self.game.world.player, actor, summary)
+                self.logger.info(f"Conversation summary between Player and {actor.name}: {summary}")
+
+            # Clear the dialogue history
+            actor_component.dialogue_history = []
+
         except Exception as e:
             self.logger.error(f"Error in dialogue: {str(e)}")
             self.logger.debug(traceback.format_exc())
@@ -190,6 +200,9 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
 
             self.game.show_message(summary, MessageChannel.DIALOGUE)
 
+            # Add the summary to both actors' memories
+            self.add_conversation_memory(actor1, actor2, summary)
+
         except Exception as e:
             self.logger.error(f"Error in summarizing conversation: {str(e)}")
             self.logger.debug(traceback.format_exc())
@@ -287,6 +300,13 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
     def end_actor_conversation(self, actor1, actor2):
         actor1_component = actor1.get_component(ActorComponent)
         actor2_component = actor2.get_component(ActorComponent)
+        
+        # Summarize the conversation
+        if actor1_component.current_conversation:
+            summary = self.summarize_full_conversation(actor1, actor2, actor1_component.current_conversation)
+            self.add_conversation_memory(actor1, actor2, summary)
+            self.logger.info(f"Conversation summary between {actor1.name} and {actor2.name}: {summary}")
+
         actor1_component.current_conversation = None
         actor2_component.current_conversation = None
         actor1_component.conversation_partner = None
@@ -352,3 +372,32 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
                 last_line = input_lines[-1].text
                 cursor_line = last_line[:cursor_pos] + "_" + last_line[cursor_pos:]
                 self.game.message_system.message_log[-1] = Message(cursor_line, MessageChannel.SYSTEM, (0, 255, 0))  # Change color to green
+
+    def add_conversation_memory(self, actor1, actor2, summary):
+        actor1.knowledge.add_conversation_memory(f"Talked with {actor2.name}: {summary}")
+        actor2.knowledge.add_conversation_memory(f"Talked with {actor1.name}: {summary}")
+        self.logger.info(f"Added conversation memory for {actor1.name} and {actor2.name}: {summary}")
+
+    def summarize_full_conversation(self, actor1, actor2, conversation):
+        try:
+            self.logger.info(f"Summarizing conversation between {actor1.name} and {actor2.name}")
+            system_prompt = f"""Summarize the conversation between {actor1.name} and {actor2.name} in a dungeon setting.
+            Provide a single sentence summary of their conversation, focusing on the main topic or outcome."""
+
+            request_body = {
+                "model": "claude-3-5-sonnet-20240620",
+                "max_tokens": 100,
+                "messages": conversation + [{"role": "user", "content": "Summarize the conversation."}],
+                "system": system_prompt,
+                "temperature": 0.7
+            }
+            
+            response = self.anthropic_client.messages.create(**request_body)
+            summary = response.content[0].text if response.content else ""
+            self.logger.info(f"Generated summary: {summary}")
+            return summary
+
+        except Exception as e:
+            self.logger.error(f"Error in summarizing full conversation: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+            return "The conversation ended without a clear summary."
