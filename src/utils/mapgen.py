@@ -3,6 +3,10 @@ from enum import Enum
 import tcod
 from tcod import libtcodpy
 
+class MapType(Enum):
+    BSP = 0
+    CAVE = 1
+
 class TileType(Enum):
     FLOOR = '.'
     WALL = '#'
@@ -40,9 +44,10 @@ class BSPNode:
         self.room = None
 
 class Map:
-    def __init__(self, width, height):
+    def __init__(self, width, height, map_type=MapType.BSP):
         self.width = width
         self.height = height
+        self.map_type = map_type
         self.tiles = [[Tile(TileType.WALL) for _ in range(width)] for _ in range(height)]
         self.rooms = []
         self.fov_map = None
@@ -216,7 +221,13 @@ class Map:
             attempts += 1
         raise ValueError("Could not find a walkable position after 1000 attempts")
 
-    def generate(self, num_rooms, min_size=6, max_size=10):
+    def generate(self, num_rooms=0, min_size=6, max_size=10):
+        if self.map_type == MapType.BSP:
+            self.generate_bsp(num_rooms, min_size, max_size)
+        elif self.map_type == MapType.CAVE:
+            self.generate_cave()
+
+    def generate_bsp(self, num_rooms, min_size, max_size):
         self.rooms = []
         root = BSPNode(1, 1, self.width - 2, self.height - 2)
         self.split_node(root, min_size, num_rooms)
@@ -227,11 +238,126 @@ class Map:
         self.add_doors(max_doors_per_room=1)
         self.initialize_fov()
 
+    def generate_cave(self):
+        cave = generate_cave(self.width, self.height)
+        for y in range(self.height):
+            for x in range(self.width):
+                if cave[y][x] == 0:
+                    self.tiles[y][x] = Tile(TileType.FLOOR)
+                else:
+                    self.tiles[y][x] = Tile(TileType.WALL)
+        
+        # Add some random cave chambers
+        for _ in range(3):  # Add 3 random chambers
+            chamber_width = random.randint(5, 10)
+            chamber_height = random.randint(5, 10)
+            x = random.randint(1, self.width - chamber_width - 1)
+            y = random.randint(1, self.height - chamber_height - 1)
+            self.create_chamber(x, y, chamber_width, chamber_height)
+        
+        self.connect_chambers()
+        self.initialize_fov()
+
+    def create_chamber(self, x, y, width, height):
+        for chamber_y in range(y, y + height):
+            for chamber_x in range(x, x + width):
+                if 0 <= chamber_x < self.width and 0 <= chamber_y < self.height:
+                    if random.random() < 0.8:  # 80% chance to be floor, for a more natural look
+                        self.tiles[chamber_y][chamber_x] = Tile(TileType.FLOOR)
+
+    def connect_chambers(self):
+        # Find all floor tiles
+        floor_tiles = [(x, y) for y in range(self.height) for x in range(self.width) 
+                       if self.tiles[y][x].tile_type == TileType.FLOOR]
+        
+        # Use a simple algorithm to connect nearby floor tiles
+        for _ in range(len(floor_tiles) // 10):  # Adjust this number to control connectivity
+            start = random.choice(floor_tiles)
+            end = min(floor_tiles, key=lambda p: ((p[0]-start[0])**2 + (p[1]-start[1])**2))
+            self.create_tunnel(start[0], start[1], end[0], end[1])
+
+    def create_tunnel(self, x1, y1, x2, y2):
+        # Simple L-shaped tunnel
+        for x in range(min(x1, x2), max(x1, x2) + 1):
+            self.tiles[y1][x] = Tile(TileType.FLOOR)
+        for y in range(min(y1, y2), max(y1, y2) + 1):
+            self.tiles[y][x2] = Tile(TileType.FLOOR)
+
     def __str__(self):
         return '\n'.join(''.join(tile.tile_type.value for tile in row) for row in self.tiles)
 
-def generate_map(width, height, num_rooms):
-    game_map = Map(width, height)
+def generate_cave(width, height, fill_probability=0.45, iterations=4):
+    # Initialize the cave with random walls, keeping borders solid
+    cave = [[1 if x == 0 or x == width - 1 or y == 0 or y == height - 1 else
+             (1 if random.random() < fill_probability else 0)
+             for x in range(width)] for y in range(height)]
+
+    # Run cellular automata iterations
+    for _ in range(iterations):
+        new_cave = [[0 for _ in range(width)] for _ in range(height)]
+        for y in range(height):
+            for x in range(width):
+                if x == 0 or x == width - 1 or y == 0 or y == height - 1:
+                    new_cave[y][x] = 1  # Keep borders solid
+                else:
+                    wall_count = sum(cave[ny][nx] 
+                                     for ny in range(max(0, y-1), min(height, y+2))
+                                     for nx in range(max(0, x-1), min(width, x+2))
+                                     if (ny, nx) != (y, x))
+                    if cave[y][x] == 1:
+                        new_cave[y][x] = 1 if wall_count >= 4 else 0
+                    else:
+                        new_cave[y][x] = 1 if wall_count >= 5 else 0
+        cave = new_cave
+
+    # Ensure connectivity
+    cave = ensure_connectivity(cave, width, height)
+
+    return cave
+
+def ensure_connectivity(cave, width, height):
+    start_x, start_y = width // 2, height // 2
+    
+    # Find a starting open space near the center
+    if cave[start_y][start_x] == 1:
+        for r in range(1, min(width, height) // 2):
+            for i in range(-r, r + 1):
+                for j in range(-r, r + 1):
+                    new_x, new_y = start_x + i, start_y + j
+                    if 0 <= new_x < width and 0 <= new_y < height and cave[new_y][new_x] == 0:
+                        start_x, start_y = new_x, new_y
+                        break
+                if cave[start_y][start_x] == 0:
+                    break
+            if cave[start_y][start_x] == 0:
+                break
+    
+    # Flood fill from the starting point
+    flood_fill(cave, start_x, start_y)
+    
+    # Convert unreached areas to walls
+    for y in range(height):
+        for x in range(width):
+            if cave[y][x] == 0:
+                cave[y][x] = 1
+            elif cave[y][x] == 2:
+                cave[y][x] = 0
+    
+    return cave
+
+def flood_fill(cave, x, y):
+    if x < 0 or x >= len(cave[0]) or y < 0 or y >= len(cave) or cave[y][x] != 0:
+        return
+    
+    cave[y][x] = 2  # Mark as reached
+    
+    flood_fill(cave, x + 1, y)
+    flood_fill(cave, x - 1, y)
+    flood_fill(cave, x, y + 1)
+    flood_fill(cave, x, y - 1)
+
+def generate_map(width, height, num_rooms, map_type=MapType.BSP):
+    game_map = Map(width, height, map_type)
     game_map.generate(num_rooms)
     return game_map
 

@@ -5,6 +5,7 @@ from world import World
 from game import Game
 from entities.Player import Player
 from entities.Actor import Actor
+from utils.mapgen import MapType
 
 def get_unique_walkable_positions(world, count):
     positions = set()
@@ -19,7 +20,16 @@ def main():
     logger = logging.getLogger(__name__)
     try:
         game = Game(None)  # Create Game instance with None as world
-        world = World(80, 38, game)  # Pass game to World
+        
+        # Ask the user to choose a map type
+        print("Choose a map type:")
+        print("1. BSP Dungeon")
+        print("2. Cave System")
+        choice = input("Enter your choice (1 or 2): ")
+        
+        map_type = MapType.BSP if choice == "1" else MapType.CAVE
+        
+        world = World(80, 38, game, map_type)  # Pass game and map_type to World
         game.setup_world(world)  # Set up the world and initialize the render system
 
         # Find a valid starting position for the player

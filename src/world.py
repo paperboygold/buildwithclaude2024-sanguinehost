@@ -1,13 +1,13 @@
-from utils.mapgen import generate_map
+from utils.mapgen import generate_map, MapType
 from entities.Player import Player
 from entities.Actor import Actor
 from systems.ActorKnowledgeSystem import ActorKnowledgeSystem
 
 class World:
-    def __init__(self, width, height, game):
+    def __init__(self, width, height, game, map_type=MapType.BSP):
         self.width = width
         self.height = height
-        self.game_map = generate_map(width, height, num_rooms=3)
+        self.game_map = generate_map(width, height, num_rooms=3, map_type=map_type)
         self.entities = []
         self.player = None
         self.game = game
