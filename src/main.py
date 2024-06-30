@@ -13,7 +13,9 @@ from utils.mapgen import generate_map, TileType
 import random
 from utils.dijkstra_map import DijkstraMap
 import time
-from ecs import Entity, Component, NPCComponent, KnowledgeComponent, NPCState
+from ecs.ecs import Entity, Component
+from components.ActorComponent import ActorComponent, ActorState
+from components.KnowledgeComponent import KnowledgeComponent
 
 def setup_logging():
     logging.basicConfig(
@@ -81,54 +83,54 @@ class Player(GameEntity):
     def __init__(self, x, y):
         super().__init__(x, y, '@', 'Player')
 
-class NPC(GameEntity):
+class Actor(GameEntity):
     def __init__(self, x, y, name, character_card_key):
         super().__init__(x, y, 'N', name)
-        self.add_component(NPCComponent(name, character_card_key))
+        self.add_component(ActorComponent(name, character_card_key))
         self.add_component(KnowledgeComponent())
         self.color = (random.randint(100, 255), random.randint(100, 255), random.randint(100, 255))
 
     @property
     def state(self):
-        return self.get_component(NPCComponent).state
+        return self.get_component(ActorComponent).state
 
     @state.setter
     def state(self, value):
-        self.get_component(NPCComponent).state = value
+        self.get_component(ActorComponent).state = value
 
     @property
     def knowledge(self):
         return self.get_component(KnowledgeComponent)
 
     def update(self, game_map):
-        npc_component = self.get_component(NPCComponent)
+        actor_component = self.get_component(ActorComponent)
         current_time = time.time()
-        if current_time - npc_component.last_move_time < npc_component.move_delay:
+        if current_time - actor_component.last_move_time < actor_component.move_delay:
             return
 
-        if npc_component.state == NPCState.IDLE:
+        if actor_component.state == ActorState.IDLE:
             if random.random() < 0.1:
-                npc_component.state = NPCState.PATROL
-                npc_component.target = game_map.get_random_walkable_position()
-                npc_component.dijkstra_map = DijkstraMap(game_map.width, game_map.height)
-                npc_component.dijkstra_map.compute([npc_component.target], game_map.is_walkable)
-        elif npc_component.state == NPCState.PATROL:
-            if npc_component.target:
-                direction = npc_component.dijkstra_map.get_direction(int(self.x), int(self.y))
+                actor_component.state = ActorState.PATROL
+                actor_component.target = game_map.get_random_walkable_position()
+                actor_component.dijkstra_map = DijkstraMap(game_map.width, game_map.height)
+                actor_component.dijkstra_map.compute([actor_component.target], game_map.is_walkable)
+        elif actor_component.state == ActorState.PATROL:
+            if actor_component.target:
+                direction = actor_component.dijkstra_map.get_direction(int(self.x), int(self.y))
                 if direction:
                     new_x = self.x + direction[0]
                     new_y = self.y + direction[1]
                     if game_map.is_walkable(int(new_x), int(new_y)):
                         self.x = new_x
                         self.y = new_y
-                        npc_component.last_move_time = current_time
+                        actor_component.last_move_time = current_time
 
-                if (int(self.x), int(self.y)) == npc_component.target:
-                    npc_component.state = NPCState.IDLE
-                    npc_component.target = None
-                    npc_component.dijkstra_map = None
+                if (int(self.x), int(self.y)) == actor_component.target:
+                    actor_component.state = ActorState.IDLE
+                    actor_component.target = None
+                    actor_component.dijkstra_map = None
             else:
-                npc_component.state = NPCState.IDLE
+                actor_component.state = ActorState.IDLE
 
 class MessageChannel(Enum):
     COMBAT = auto()
@@ -188,41 +190,41 @@ class World:
     def is_walkable(self, x, y):
         return self.game_map.is_walkable(x, y)
 
-    def update_npc_knowledge(self):
-        for npc in [entity for entity in self.entities if isinstance(entity, NPC)]:
-            for other_npc in [e for e in self.entities if isinstance(e, NPC) and e != npc]:
-                if self.game_map.is_in_fov(int(npc.x), int(npc.y)) and self.game_map.is_in_fov(int(other_npc.x), int(other_npc.y)):
-                    npc.knowledge.add_npc(other_npc.name)
+    def update_actor_knowledge(self):
+        for actor in [entity for entity in self.entities if isinstance(entity, Actor)]:
+            for other_actor in [e for e in self.entities if isinstance(e, Actor) and e != actor]:
+                if self.game_map.is_in_fov(int(actor.x), int(actor.y)) and self.game_map.is_in_fov(int(other_actor.x), int(other_actor.y)):
+                    actor.knowledge.add_actor(other_actor.name)
             
-            current_room = next((room for room in self.game_map.rooms if room.x <= npc.x < room.x + room.width and room.y <= npc.y < room.y + room.height), None)
+            current_room = next((room for room in self.game_map.rooms if room.x <= actor.x < room.x + room.width and room.y <= actor.y < room.y + room.height), None)
             if current_room:
-                npc.knowledge.add_location(f"Room at ({current_room.x}, {current_room.y})")
+                actor.knowledge.add_location(f"Room at ({current_room.x}, {current_room.y})")
 
-    def update_npcs(self):
+    def update_actors(self):
         for entity in self.entities:
-            if isinstance(entity, NPC):
+            if isinstance(entity, Actor):
                 entity.update(self.game_map)
 
-    def generate_npc_relationships(self):
-        npc_entities = [entity for entity in self.entities if isinstance(entity, NPC)]
-        for i, npc1 in enumerate(npc_entities):
-            for npc2 in npc_entities[i+1:]:
+    def generate_actor_relationships(self):
+        actor_entities = [entity for entity in self.entities if isinstance(entity, Actor)]
+        for i, actor1 in enumerate(actor_entities):
+            for actor2 in actor_entities[i+1:]:
                 relationship_type = "stranger"
                 if random.random() < 0.5:  # 50% chance of a non-stranger relationship
                     relationship_type = random.choice([
                         "friend", "rival", "mentor", "student", "ally", "enemy",
                         "acquaintance", "family", "colleague"
                     ])
-                relationship_story = self.generate_relationship_story(npc1, npc2, relationship_type)
-                npc1.knowledge.add_npc(npc2.name, relationship_type, relationship_story)
-                npc2.knowledge.add_npc(npc1.name, relationship_type, relationship_story)
+                relationship_story = self.generate_relationship_story(actor1, actor2, relationship_type)
+                actor1.knowledge.add_actor(actor2.name, relationship_type, relationship_story)
+                actor2.knowledge.add_actor(actor1.name, relationship_type, relationship_story)
 
-    def generate_relationship_story(self, npc1, npc2, relationship_type):
-        npc1_component = npc1.get_component(NPCComponent)
-        npc2_component = npc2.get_component(NPCComponent)
-        prompt = f"Generate a very brief story (1-2 sentences) about the {relationship_type} relationship between {npc1.name} and {npc2.name}. {npc1.name}'s character: {npc1_component.character_card}. {npc2.name}'s character: {npc2_component.character_card}."
+    def generate_relationship_story(self, actor1, actor2, relationship_type):
+        actor1_component = actor1.get_component(ActorComponent)
+        actor2_component = actor2.get_component(ActorComponent)
+        prompt = f"Generate a very brief story (1-2 sentences) about the {relationship_type} relationship between {actor1.name} and {actor2.name}. {actor1.name}'s character: {actor1_component.character_card}. {actor2.name}'s character: {actor2_component.character_card}."
         
-        self.game.logger.info(f"Generating relationship story for {npc1.name} and {npc2.name}")
+        self.game.logger.info(f"Generating relationship story for {actor1.name} and {actor2.name}")
         self.game.logger.debug(f"Relationship story prompt: {prompt}")
         
         try:
@@ -238,15 +240,15 @@ class World:
         except Exception as e:
             self.game.logger.error(f"Error generating relationship story: {str(e)}")
             self.game.logger.debug(traceback.format_exc())
-            return f"{npc1.name} and {npc2.name} have a {relationship_type} relationship."
+            return f"{actor1.name} and {actor2.name} have a {relationship_type} relationship."
 
-    def get_potential_npc_interactions(self):
-        npc_entities = [entity for entity in self.entities if isinstance(entity, NPC)]
+    def get_potential_actor_interactions(self):
+        actor_entities = [entity for entity in self.entities if isinstance(entity, Actor)]
         potential_interactions = []
-        for npc1 in npc_entities:
-            for npc2 in npc_entities:
-                if npc1 != npc2 and self.game_map.is_in_fov(int(npc1.x), int(npc1.y)) and self.game_map.is_in_fov(int(npc2.x), int(npc2.y)):
-                    potential_interactions.append((npc1, npc2))
+        for actor1 in actor_entities:
+            for actor2 in actor_entities:
+                if actor1 != actor2 and self.game_map.is_in_fov(int(actor1.x), int(actor1.y)) and self.game_map.is_in_fov(int(actor2.x), int(actor2.y)):
+                    potential_interactions.append((actor1, actor2))
         return potential_interactions
 
 class Game:
@@ -389,7 +391,7 @@ class Game:
         self.context.present(self.root_console)
 
     def show_message(self, text, channel=MessageChannel.SYSTEM, color=None, sender=None):
-        if sender and isinstance(sender, NPC):
+        if sender and isinstance(sender, Actor):
             color = sender.color
         elif channel == MessageChannel.DIALOGUE and not color:
             color = (0, 255, 255)  # Default dialogue color if no sender specified
@@ -450,47 +452,47 @@ class Game:
                 cursor_line = last_line[:cursor_pos] + "_" + last_line[cursor_pos:]
                 self.message_log[-1] = Message(cursor_line, MessageChannel.SYSTEM, (0, 255, 0))  # Change color to green
 
-    def start_dialogue(self, npc):
+    def start_dialogue(self, actor):
         try:
-            npc_component = npc.get_component(NPCComponent)
-            self.logger.info(f"Starting dialogue with {npc.name}")
-            self.logger.debug(f"NPC {npc.name} character card: {npc_component.character_card}")
-            self.logger.debug(f"NPC {npc.name} knowledge: {npc.knowledge.get_summary()}")
-            self.show_message(f"You are now talking to {npc.name}", MessageChannel.DIALOGUE, sender=npc)
+            actor_component = actor.get_component(ActorComponent)
+            self.logger.info(f"Starting dialogue with {actor.name}")
+            self.logger.debug(f"Actor {actor.name} character card: {actor_component.character_card}")
+            self.logger.debug(f"Actor {actor.name} knowledge: {actor.knowledge.get_summary()}")
+            self.show_message(f"You are now talking to {actor.name}", MessageChannel.DIALOGUE, sender=actor)
             
             while True:
                 user_input = self.get_user_input("You: ")
                 if user_input is None:  # User pressed Escape
-                    self.logger.info(f"Dialogue with {npc.name} ended by user")
+                    self.logger.info(f"Dialogue with {actor.name} ended by user")
                     self.show_message("Dialogue ended.", MessageChannel.DIALOGUE, (0, 255, 255))
                     break
             
                 self.logger.debug(f"Processing user input: {user_input}")
                 self.show_message(f"You: {user_input}", MessageChannel.DIALOGUE, (0, 255, 0))
             
-                npc_component.dialogue_history.append({"role": "user", "content": user_input})
+                actor_component.dialogue_history.append({"role": "user", "content": user_input})
                 
                 try:
                     relationship_info = ""
-                    if npc.knowledge.known_npcs:
-                        other_npc_name, relationship_data = next(iter(npc.knowledge.known_npcs.items()))
+                    if actor.knowledge.known_actors:
+                        other_actor_name, relationship_data = next(iter(actor.knowledge.known_actors.items()))
                         relationship = relationship_data["relationship"]
                         relationship_story = relationship_data["story"]
-                        relationship_info = f"You have a {relationship} relationship with {other_npc_name}. {relationship_story} "
+                        relationship_info = f"You have a {relationship} relationship with {other_actor_name}. {relationship_story} "
 
-                    system_prompt = f"""You are {npc.name}, an NPC in a roguelike game. Character: {npc_component.character_card}
-Environmental knowledge: {npc.knowledge.get_summary()}
+                    system_prompt = f"""You are {actor.name}, an NPC in a roguelike game. Character: {actor_component.character_card}
+Environmental knowledge: {actor.knowledge.get_summary()}
 {relationship_info}Respond in character with extremely brief responses, typically 1-2 short sentences or 10 words or less. Be concise and direct.
 Important: Speak only in dialogue. Do not describe actions, appearances, use asterisks or quotation marks. Simply respond with what your character would say."""
                     
-                    self.logger.info(f"API Request for {npc.name}:")
+                    self.logger.info(f"API Request for {actor.name}:")
                     self.logger.info(f"System Prompt: {system_prompt}")
-                    self.logger.debug(f"Dialogue history: {json.dumps(npc_component.dialogue_history, indent=2)}")
+                    self.logger.debug(f"Dialogue history: {json.dumps(actor_component.dialogue_history, indent=2)}")
                     
                     request_body = {
                         "model": "claude-3-5-sonnet-20240620",
                         "max_tokens": 50,
-                        "messages": npc_component.dialogue_history,
+                        "messages": actor_component.dialogue_history,
                         "system": system_prompt,
                         "temperature": 0.7,
                         "top_p": 1,
@@ -500,13 +502,13 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
                     
                     response = self.anthropic_client.messages.create(**request_body)
                     
-                    self.logger.info(f"API Response for {npc.name}:")
+                    self.logger.info(f"API Response for {actor.name}:")
                     self.logger.info(f"Response: {json.dumps(response.model_dump(), indent=2)}")
                     
-                    npc_response = response.content[0].text if response.content else ""
-                    npc_component.dialogue_history.append({"role": "assistant", "content": npc_response})
+                    actor_response = response.content[0].text if response.content else ""
+                    actor_component.dialogue_history.append({"role": "assistant", "content": actor_response})
                     
-                    self.show_message(f"{npc.name}: {npc_response}", MessageChannel.DIALOGUE, sender=npc)
+                    self.show_message(f"{actor.name}: {actor_response}", MessageChannel.DIALOGUE, sender=actor)
                 except Exception as e:
                     self.logger.error(f"Error in AI response: {str(e)}")
                     self.logger.debug(traceback.format_exc())
@@ -516,122 +518,122 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
             self.logger.debug(traceback.format_exc())
             self.show_message(f"An error occurred during dialogue", MessageChannel.SYSTEM, (255, 0, 0))
 
-    def start_npc_dialogue(self, npc1, npc2):
+    def start_actor_dialogue(self, actor1, actor2):
         try:
-            npc1_component = npc1.get_component(NPCComponent)
-            npc2_component = npc2.get_component(NPCComponent)
+            actor1_component = actor1.get_component(ActorComponent)
+            actor2_component = actor2.get_component(ActorComponent)
             current_time = time.time()
-            if current_time - npc1_component.last_conversation_time < npc1_component.conversation_cooldown or \
-               current_time - npc2_component.last_conversation_time < npc2_component.conversation_cooldown:
-                return  # Skip if either NPC is on cooldown
+            if current_time - actor1_component.last_conversation_time < actor1_component.conversation_cooldown or \
+               current_time - actor2_component.last_conversation_time < actor2_component.conversation_cooldown:
+                return  # Skip if either actor is on cooldown
 
-            npc1_component.last_conversation_time = current_time
-            npc2_component.last_conversation_time = current_time
+            actor1_component.last_conversation_time = current_time
+            actor2_component.last_conversation_time = current_time
 
             player_can_see = self.world.game_map.is_in_fov(int(self.world.player.x), int(self.world.player.y)) and \
-                             (self.world.game_map.is_in_fov(int(npc1.x), int(npc1.y)) or 
-                              self.world.game_map.is_in_fov(int(npc2.x), int(npc2.y)))
+                             (self.world.game_map.is_in_fov(int(actor1.x), int(actor1.y)) or 
+                              self.world.game_map.is_in_fov(int(actor2.x), int(actor2.y)))
 
             if player_can_see:
-                self.show_message(f"{npc1.name} and {npc2.name} have started a conversation.", MessageChannel.DIALOGUE, sender=npc1)
+                self.show_message(f"{actor1.name} and {actor2.name} have started a conversation.", MessageChannel.DIALOGUE, sender=actor1)
 
-            relationship_info = npc1.knowledge.get_relationship_story(npc2.name) or ""
+            relationship_info = actor1.knowledge.get_relationship_story(actor2.name) or ""
              
-            system_prompt = f"""You are simulating a conversation between {npc1.name} and {npc2.name} in a dungeon setting.
-{npc1.name}'s character: {npc1_component.character_card}
-{npc2.name}'s character: {npc2_component.character_card}
+            system_prompt = f"""You are simulating a conversation between {actor1.name} and {actor2.name} in a dungeon setting.
+{actor1.name}'s character: {actor1_component.character_card}
+{actor2.name}'s character: {actor2_component.character_card}
 Their relationship: {relationship_info}
-Environmental knowledge: {npc1.knowledge.get_summary()}
+Environmental knowledge: {actor1.knowledge.get_summary()}
 Keep responses brief and in character, typically 1-2 short sentences or 10-15 words. Be concise and direct.
 Important: Speak only in dialogue. Do not describe actions, appearances, use asterisks or quotation marks. Simply respond with what the character would say."""
 
             # Define the initial prompt
-            npc_prompt = f"You are {npc1.name}. Start a conversation with {npc2.name} in character, briefly and naturally."
+            actor_prompt = f"You are {actor1.name}. Start a conversation with {actor2.name} in character, briefly and naturally."
             
-            self.logger.info(f"Starting NPC dialogue between {npc1.name} and {npc2.name}")
-            self.logger.debug(f"NPC1 {npc1.name} character card: {npc1_component.character_card}")
-            self.logger.debug(f"NPC2 {npc2.name} character card: {npc2_component.character_card}")
+            self.logger.info(f"Starting actor dialogue between {actor1.name} and {actor2.name}")
+            self.logger.debug(f"Actor1 {actor1.name} character card: {actor1_component.character_card}")
+            self.logger.debug(f"Actor2 {actor2.name} character card: {actor2_component.character_card}")
             self.logger.debug(f"Relationship info: {relationship_info}")
-            self.logger.info(f"API Request for {npc1.name}:")
+            self.logger.info(f"API Request for {actor1.name}:")
             self.logger.info(f"System Prompt: {system_prompt}")
-            self.logger.info(f"NPC Prompt: {npc_prompt}")
+            self.logger.info(f"Actor Prompt: {actor_prompt}")
             
             request_body = {
                 "model": "claude-3-5-sonnet-20240620",
                 "max_tokens": 100,
-                "messages": [{"role": "user", "content": npc_prompt}],
+                "messages": [{"role": "user", "content": actor_prompt}],
                 "system": system_prompt,
                 "temperature": 0.7
             }
             
             response = self.anthropic_client.messages.create(**request_body)
             
-            self.logger.info(f"API Response for {npc1.name}:")
+            self.logger.info(f"API Response for {actor1.name}:")
             self.logger.info(f"Response: {json.dumps(response.model_dump(), indent=2)}")
             
-            npc_response = response.content[0].text if response.content else ""
+            actor_response = response.content[0].text if response.content else ""
 
             # Start a new conversation
             conversation = [
-                {"role": "user", "content": npc_prompt},
-                {"role": "assistant", "content": npc_response}
+                {"role": "user", "content": actor_prompt},
+                {"role": "assistant", "content": actor_response}
             ]
             
             if player_can_see:
-                self.show_message(f"{npc1.name}: {npc_response}", MessageChannel.DIALOGUE, sender=npc1)
+                self.show_message(f"{actor1.name}: {actor_response}", MessageChannel.DIALOGUE, sender=actor1)
 
             # Store the conversation for future reference
-            npc1_component.current_conversation = conversation
-            npc2_component.current_conversation = conversation
-            npc1_component.conversation_partner = npc2
-            npc2_component.conversation_partner = npc1
-            npc1_component.conversation_turns = 1
-            npc2_component.conversation_turns = 0
+            actor1_component.current_conversation = conversation
+            actor2_component.current_conversation = conversation
+            actor1_component.conversation_partner = actor2
+            actor2_component.conversation_partner = actor1
+            actor1_component.conversation_turns = 1
+            actor2_component.conversation_turns = 0
 
-            self.logger.info(f"Conversation started. Turn counts: {npc1.name} = 1, {npc2.name} = 0")
+            self.logger.info(f"Conversation started. Turn counts: {actor1.name} = 1, {actor2.name} = 0")
 
         except Exception as e:
-            self.logger.error(f"Error in NPC dialogue: {str(e)}")
+            self.logger.error(f"Error in actor dialogue: {str(e)}")
             self.logger.debug(traceback.format_exc())
             if player_can_see:
-                self.show_message(f"An error occurred during NPC dialogue", MessageChannel.SYSTEM, (255, 0, 0))
+                self.show_message(f"An error occurred during actor dialogue", MessageChannel.SYSTEM, (255, 0, 0))
 
-    def continue_npc_dialogue(self, npc1, npc2):
+    def continue_actor_dialogue(self, actor1, actor2):
         try:
-            npc1_component = npc1.get_component(NPCComponent)
-            npc2_component = npc2.get_component(NPCComponent)
+            actor1_component = actor1.get_component(ActorComponent)
+            actor2_component = actor2.get_component(ActorComponent)
             player_can_see = self.world.game_map.is_in_fov(int(self.world.player.x), int(self.world.player.y)) and \
-                             (self.world.game_map.is_in_fov(int(npc1.x), int(npc1.y)) or 
-                              self.world.game_map.is_in_fov(int(npc2.x), int(npc2.y)))
+                             (self.world.game_map.is_in_fov(int(actor1.x), int(actor1.y)) or 
+                              self.world.game_map.is_in_fov(int(actor2.x), int(actor2.y)))
 
-            conversation = npc1_component.current_conversation
-            self.logger.info(f"Continuing NPC dialogue between {npc1.name} and {npc2.name}")
+            conversation = actor1_component.current_conversation
+            self.logger.info(f"Continuing actor dialogue between {actor1.name} and {actor2.name}")
             self.logger.debug(f"Current conversation state: {json.dumps(conversation, indent=2)}")
 
-            # Determine which NPC should speak next
-            current_npc = npc2 if npc1_component.conversation_turns > npc2_component.conversation_turns else npc1
-            other_npc = npc1 if current_npc == npc2 else npc2
+            # Determine which actor should speak next
+            current_actor = actor2 if actor1_component.conversation_turns > actor2_component.conversation_turns else actor1
+            other_actor = actor1 if current_actor == actor2 else actor2
 
-            self.logger.debug(f"Current speaker: {current_npc.name}, Responding to: {other_npc.name}")
-            self.logger.debug(f"Conversation turns - {npc1.name}: {npc1_component.conversation_turns}, {npc2.name}: {npc2_component.conversation_turns}")
+            self.logger.debug(f"Current speaker: {current_actor.name}, Responding to: {other_actor.name}")
+            self.logger.debug(f"Conversation turns - {actor1.name}: {actor1_component.conversation_turns}, {actor2.name}: {actor2_component.conversation_turns}")
 
             # Check the role of the last message and set the next role accordingly
             last_role = conversation[-1]["role"] if conversation else "assistant"
             next_role = "user" if last_role == "assistant" else "assistant"
 
-            # Add the prompt for the current NPC to speak next
+            # Add the prompt for the current actor to speak next
             if next_role == "user":
                 conversation.append({
                     "role": "user",
-                    "content": f"{current_npc.name}, respond to {other_npc.name}'s last statement."
+                    "content": f"{current_actor.name}, respond to {other_actor.name}'s last statement."
                 })
 
-            system_prompt = f"""You are {current_npc.name} in a conversation with {other_npc.name} in a dungeon setting.
-{current_npc.name}'s character: {current_npc.get_component(NPCComponent).character_card}
+            system_prompt = f"""You are {current_actor.name} in a conversation with {other_actor.name} in a dungeon setting.
+{current_actor.name}'s character: {current_actor.get_component(ActorComponent).character_card}
 Keep responses brief and in character, typically 1-2 short sentences or 10-15 words. Be concise and direct.
 Important: Speak only in dialogue. Do not describe actions, appearances, use asterisks or quotation marks. Simply respond with what the character would say."""
 
-            self.logger.info(f"API Request for {current_npc.name}:")
+            self.logger.info(f"API Request for {current_actor.name}:")
             self.logger.info(f"System Prompt: {system_prompt}")
             self.logger.info(f"Messages: {json.dumps(conversation, indent=2)}")
             
@@ -645,54 +647,54 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
             
             response = self.anthropic_client.messages.create(**request_body)
             
-            self.logger.info(f"API Response for {current_npc.name}:")
+            self.logger.info(f"API Response for {current_actor.name}:")
             self.logger.info(f"Response: {json.dumps(response.model_dump(), indent=2)}")
             
-            npc_response = response.content[0].text if response.content else ""
+            actor_response = response.content[0].text if response.content else ""
             
-            if npc_response.strip():  # Only add non-empty responses
-                conversation.append({"role": "assistant", "content": npc_response})
+            if actor_response.strip():  # Only add non-empty responses
+                conversation.append({"role": "assistant", "content": actor_response})
                 
                 if player_can_see:
-                    self.show_message(f"{current_npc.name}: {npc_response}", MessageChannel.DIALOGUE, sender=current_npc)
+                    self.show_message(f"{current_actor.name}: {actor_response}", MessageChannel.DIALOGUE, sender=current_actor)
 
-                # Update the conversation for both NPCs
-                npc1_component.current_conversation = conversation
-                npc2_component.current_conversation = conversation
+                # Update the conversation for both actors
+                actor1_component.current_conversation = conversation
+                actor2_component.current_conversation = conversation
 
-                # Increment the conversation turn counter for the current NPC
-                current_npc.get_component(NPCComponent).conversation_turns += 1
+                # Increment the conversation turn counter for the current actor
+                current_actor.get_component(ActorComponent).conversation_turns += 1
 
-                self.logger.info(f"Updated turn counts: {npc1.name} = {npc1_component.conversation_turns}, {npc2.name} = {npc2_component.conversation_turns}")
+                self.logger.info(f"Updated turn counts: {actor1.name} = {actor1_component.conversation_turns}, {actor2.name} = {actor2_component.conversation_turns}")
                 self.logger.info(f"Updated conversation state: {json.dumps(conversation, indent=2)}")
             else:
-                self.logger.warning(f"Empty response received for {current_npc.name}. Ending conversation.")
-                self.end_npc_conversation(npc1, npc2)
+                self.logger.warning(f"Empty response received for {current_actor.name}. Ending conversation.")
+                self.end_actor_conversation(actor1, actor2)
 
         except Exception as e:
-            self.logger.error(f"Error in continuing NPC dialogue: {str(e)}")
+            self.logger.error(f"Error in continuing actor dialogue: {str(e)}")
             self.logger.debug(traceback.format_exc())
             if player_can_see:
-                self.show_message(f"An error occurred during NPC dialogue", MessageChannel.SYSTEM, (255, 0, 0))
-            self.end_npc_conversation(npc1, npc2)
+                self.show_message(f"An error occurred during actor dialogue", MessageChannel.SYSTEM, (255, 0, 0))
+            self.end_actor_conversation(actor1, actor2)
 
-    def end_npc_conversation(self, npc1, npc2):
-        npc1_component = npc1.get_component(NPCComponent)
-        npc2_component = npc2.get_component(NPCComponent)
-        npc1_component.current_conversation = None
-        npc2_component.current_conversation = None
-        npc1_component.conversation_partner = None
-        npc2_component.conversation_partner = None
-        npc1_component.conversation_turns = 0
-        npc2_component.conversation_turns = 0
-        self.logger.info(f"Conversation between {npc1.name} and {npc2.name} has ended.")
+    def end_actor_conversation(self, actor1, actor2):
+        actor1_component = actor1.get_component(ActorComponent)
+        actor2_component = actor2.get_component(ActorComponent)
+        actor1_component.current_conversation = None
+        actor2_component.current_conversation = None
+        actor1_component.conversation_partner = None
+        actor2_component.conversation_partner = None
+        actor1_component.conversation_turns = 0
+        actor2_component.conversation_turns = 0
+        self.logger.info(f"Conversation between {actor1.name} and {actor2.name} has ended.")
  
     def interact(self):
         player_x, player_y = int(self.world.player.x), int(self.world.player.y)
         self.logger.debug(f"Player attempting to interact at position ({player_x}, {player_y})")
         for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:  # Check adjacent tiles
             entity = self.world.get_entity_at(player_x + dx, player_y + dy)
-            if isinstance(entity, NPC):
+            if isinstance(entity, Actor):
                 self.start_dialogue(entity)
                 return
         self.show_message("There's no one to interact with.", MessageChannel.SYSTEM, (255, 255, 0))
@@ -715,8 +717,8 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
         try:
             self.logger.info("Starting game loop")
             while True:
-                self.world.update_npc_knowledge()
-                self.world.update_npcs()
+                self.world.update_actor_knowledge()
+                self.world.update_actors()
                 self.render()
                 
                 for event in tcod.event.wait():
@@ -745,20 +747,20 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
                             raise SystemExit()
                         
                         if action_taken:
-                            self.logger.debug("Updating NPC knowledge and positions")
-                            self.world.update_npc_knowledge()
-                            self.world.update_npcs()
+                            self.logger.debug("Updating actor knowledge and positions")
+                            self.world.update_actor_knowledge()
+                            self.world.update_actors()
                             
-                            self.logger.debug("Checking for potential NPC interactions")
-                            potential_interactions = self.world.get_potential_npc_interactions()
-                            for npc1, npc2 in potential_interactions:
-                                if not npc1.get_component(NPCComponent).current_conversation and random.random() < 0.3:  # 30% chance to start a conversation
-                                    self.start_npc_dialogue(npc1, npc2)
+                            self.logger.debug("Checking for potential actor interactions")
+                            potential_interactions = self.world.get_potential_actor_interactions()
+                            for actor1, actor2 in potential_interactions:
+                                if not actor1.get_component(ActorComponent).current_conversation and random.random() < 0.3:  # 30% chance to start a conversation
+                                    self.start_actor_dialogue(actor1, actor2)
                             
-                            # Continue NPC dialogues after player action
-                            for npc1, npc2 in potential_interactions:
-                                if npc1.get_component(NPCComponent).current_conversation and npc1.get_component(NPCComponent).conversation_turns < 3:
-                                    self.continue_npc_dialogue(npc1, npc2)
+                            # Continue actor dialogues after player action
+                            for actor1, actor2 in potential_interactions:
+                                if actor1.get_component(ActorComponent).current_conversation and actor1.get_component(ActorComponent).conversation_turns < 3:
+                                    self.continue_actor_dialogue(actor1, actor2)
                                     break  # Only continue one conversation per turn
                         self.logger.debug("Game loop iteration completed")
         except Exception as e:
@@ -779,16 +781,16 @@ def main():
         player = Player(player_x, player_y)
         world.add_entity(player)
         
-        # Place NPCs in random positions
-        for i in range(2):  # Place 2 NPCs
-            npc_x, npc_y = world.game_map.get_random_walkable_position()
+        # Place actors in random positions
+        for i in range(2):  # Place 2 actors
+            actor_x, actor_y = world.game_map.get_random_walkable_position()
             if i == 0:
-                npc = NPC(npc_x, npc_y, "Wise Old Man", "wise_old_man")
+                actor = Actor(actor_x, actor_y, "Wise Old Man", "wise_old_man")
             else:
-                npc = NPC(npc_x, npc_y, "Mysterious Stranger", "mysterious_stranger")
-            world.add_entity(npc)
+                actor = Actor(actor_x, actor_y, "Mysterious Stranger", "mysterious_stranger")
+            world.add_entity(actor)
 
-        world.generate_npc_relationships()
+        world.generate_actor_relationships()
 
         game.run()
     except Exception as e:
