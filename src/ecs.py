@@ -1,5 +1,5 @@
 from typing import Dict, List, Type
-from character_cards import get_character_card
+from data.character_cards import get_character_card
 from enum import Enum, auto
 
 class Component:

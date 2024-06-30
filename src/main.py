@@ -8,11 +8,10 @@ from enum import Enum, auto
 import logging
 import traceback
 from typing import Optional
-from character_cards import get_character_card, set_character_card
 import json
-from mapgen import generate_map, TileType, Tile
+from utils.mapgen import generate_map, TileType
 import random
-from dijkstra_map import DijkstraMap
+from utils.dijkstra_map import DijkstraMap
 import time
 from ecs import Entity, Component, NPCComponent, KnowledgeComponent, NPCState
 
