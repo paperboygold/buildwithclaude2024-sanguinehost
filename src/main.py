@@ -18,6 +18,7 @@ from utils.logging import setup_logging
 from utils.load_api_key import load_api_key
 from systems.MessageSystem import MessageSystem, MessageChannel, Message
 from systems.RenderSystem import RenderSystem
+from systems.InputSystem import InputSystem
 from world import World
 
 class GameEntity(Entity):
@@ -69,6 +70,9 @@ class Game:
             
             # Initialize camera and FOV
             self.initialize_camera_and_fov()
+
+            # Initialize input system
+            self.input_system = InputSystem(self)
 
         except Exception as e:
             self.logger.error(f"Error initializing game: {str(e)}")
@@ -448,51 +452,26 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
         try:
             self.logger.info("Starting game loop")
             while True:
-                self.world.update_actors()
                 self.render_system.render()
+                action_taken = self.input_system.handle_input()
                 
-                for event in tcod.event.wait():
-                    if event.type == "QUIT":
-                        raise SystemExit()
-                    elif event.type == "KEYDOWN":
-                        action_taken = False
-                        if event.sym == tcod.event.KeySym.UP:
-                            self.move_player(0, -1)
-                            action_taken = True
-                        elif event.sym == tcod.event.KeySym.DOWN:
-                            self.move_player(0, 1)
-                            action_taken = True
-                        elif event.sym == tcod.event.KeySym.LEFT:
-                            self.move_player(-1, 0)
-                            action_taken = True
-                        elif event.sym == tcod.event.KeySym.RIGHT:
-                            self.move_player(1, 0)
-                            action_taken = True
-                        elif event.sym == tcod.event.KeySym.PERIOD:
-                            self.message_system.add_message("You wait for a moment.", MessageChannel.SYSTEM)
-                            action_taken = True
-                        elif event.sym == tcod.event.KeySym.i:
-                            self.interact()
-                        elif event.sym == tcod.event.KeySym.q:
-                            raise SystemExit()
-                        
-                        if action_taken:
-                            self.logger.debug("Updating actor knowledge and positions")
-                            self.world.actor_knowledge_system.update(self.world.entities)
-                            self.world.update_actors()
-                            
-                            self.logger.debug("Checking for potential actor interactions")
-                            potential_interactions = self.world.get_potential_actor_interactions()
-                            for actor1, actor2 in potential_interactions:
-                                if not actor1.get_component(ActorComponent).current_conversation and random.random() < 0.3:  # 30% chance to start a conversation
-                                    self.start_actor_dialogue(actor1, actor2)
-                            
-                            # Continue actor dialogues after player action
-                            for actor1, actor2 in potential_interactions:
-                                if actor1.get_component(ActorComponent).current_conversation and actor1.get_component(ActorComponent).conversation_turns < 3:
-                                    self.continue_actor_dialogue(actor1, actor2)
-                                    break  # Only continue one conversation per turn
-                        self.logger.debug("Game loop iteration completed")
+                if action_taken:
+                    self.logger.debug("Updating actor knowledge and positions")
+                    self.world.actor_knowledge_system.update(self.world.entities)
+                    self.world.update_actors()
+                    
+                    self.logger.debug("Checking for potential actor interactions")
+                    potential_interactions = self.world.get_potential_actor_interactions()
+                    for actor1, actor2 in potential_interactions:
+                        if not actor1.get_component(ActorComponent).current_conversation and random.random() < 0.3:  # 30% chance to start a conversation
+                            self.start_actor_dialogue(actor1, actor2)
+                    
+                    # Continue actor dialogues after player action
+                    for actor1, actor2 in potential_interactions:
+                        if actor1.get_component(ActorComponent).current_conversation and actor1.get_component(ActorComponent).conversation_turns < 3:
+                            self.continue_actor_dialogue(actor1, actor2)
+                            break  # Only continue one conversation per turn
+                self.logger.debug("Game loop iteration completed")
         except Exception as e:
             self.logger.error(f"Error in game loop: {str(e)}")
             self.logger.debug(traceback.format_exc())
