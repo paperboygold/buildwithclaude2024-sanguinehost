@@ -3,45 +3,21 @@ import anthropic
 import tcod
 import textwrap
 from tcod.event import KeySym
-from dotenv import load_dotenv
 from enum import Enum, auto
 import logging
 import traceback
-from typing import Optional
 import json
 from utils.mapgen import generate_map, TileType
 import random
-from utils.dijkstra_map import DijkstraMap
 import time
-from ecs.ecs import Entity, Component
-from components.ActorComponent import ActorComponent, ActorState
-from components.KnowledgeComponent import KnowledgeComponent
+from ecs.ecs import Entity
+from components.ActorComponent import ActorComponent
 from components.PositionComponent import PositionComponent
 from components.RenderComponent import RenderComponent
 from entities.Player import Player
 from entities.Actor import Actor
-
-def setup_logging():
-    logging.basicConfig(
-        level=logging.DEBUG,  # Change to DEBUG for more verbose logging
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        filename='game.log',
-        filemode='w'
-    )
-    console = logging.StreamHandler()
-    console.setLevel(logging.INFO)  # Change to INFO to see more output in console
-    formatter = logging.Formatter('%(name)-12s: %(levelname)-8s %(message)s')
-    console.setFormatter(formatter)
-    logging.getLogger('').addHandler(console)
-
-def load_api_key() -> Optional[str]:
-    load_dotenv()
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        logging.warning("ANTHROPIC_API_KEY not found in .env file.")
-        print("Please enter your Anthropic API key manually:")
-        api_key = input().strip()
-    return api_key
+from utils.logging import setup_logging
+from utils.load_api_key import load_api_key
 
 class GameEntity(Entity):
     def __init__(self, x: float, y: float, char: str, name: str):
