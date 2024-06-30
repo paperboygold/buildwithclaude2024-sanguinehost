@@ -7,7 +7,7 @@ class World:
     def __init__(self, width, height, game):
         self.width = width
         self.height = height
-        self.game_map = generate_map(width, height, num_rooms=1)
+        self.game_map = generate_map(width, height, num_rooms=3)
         self.entities = []
         self.player = None
         self.game = game

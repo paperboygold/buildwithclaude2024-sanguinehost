@@ -6,6 +6,14 @@ from game import Game
 from entities.Player import Player
 from entities.Actor import Actor
 
+def get_unique_walkable_positions(world, count):
+    positions = set()
+    while len(positions) < count:
+        x, y = world.game_map.get_random_walkable_position()
+        if (x, y) not in positions:
+            positions.add((x, y))
+    return list(positions)
+
 def main():
     setup_logging()
     logger = logging.getLogger(__name__)
@@ -19,13 +27,15 @@ def main():
         player = Player(player_x, player_y)
         world.add_entity(player)
         
-        # Place actors in random positions
-        for i in range(2):  # Place 2 actors
-            actor_x, actor_y = world.game_map.get_random_walkable_position()
-            if i == 0:
-                actor = Actor(actor_x, actor_y, "Wise Old Man", "wise_old_man")
-            else:
-                actor = Actor(actor_x, actor_y, "Mysterious Stranger", "mysterious_stranger")
+        # Get unique positions for actors
+        actor_positions = get_unique_walkable_positions(world, 2)  # Get 2 unique positions
+
+        # Place actors in unique positions
+        actors = [
+            Actor(actor_positions[0][0], actor_positions[0][1], "Wise Old Man", "wise_old_man"),
+            Actor(actor_positions[1][0], actor_positions[1][1], "Mysterious Stranger", "mysterious_stranger")
+        ]
+        for actor in actors:
             world.add_entity(actor)
 
         world.actor_knowledge_system.generate_initial_relationships(world.entities)

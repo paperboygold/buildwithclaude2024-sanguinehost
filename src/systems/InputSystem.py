@@ -2,6 +2,7 @@ import tcod
 from tcod.event import KeySym
 from ecs.ecs import System
 from systems.MessageSystem import MessageChannel
+from utils.mapgen import TileType
 
 class InputSystem(System):
     def __init__(self, game):
@@ -34,6 +35,23 @@ class InputSystem(System):
             action_taken = True
         elif event.sym == KeySym.i:
             self.game.interact()
+        elif event.sym == KeySym.o:
+            action_taken = self.handle_open_door()
         elif event.sym == KeySym.q:
             raise SystemExit()
         return action_taken
+
+    def handle_open_door(self):
+        player = self.game.world.player
+        for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:  # Check adjacent tiles
+            x, y = int(player.x + dx), int(player.y + dy)
+            if self.game.world.game_map.tiles[y][x].tile_type == TileType.DOOR:
+                tile = self.game.world.game_map.tiles[y][x]
+                if not tile.is_open:
+                    tile.is_open = True
+                    tile.blocked = False
+                    tile.walkable = True
+                    self.game.message_system.add_message("You open the door.", MessageChannel.SYSTEM)
+                    return True
+        self.game.message_system.add_message("There is no door to open.", MessageChannel.SYSTEM)
+        return False

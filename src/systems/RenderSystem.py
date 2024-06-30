@@ -98,7 +98,14 @@ class RenderSystem(System):
                             color = (0, 100, 100)
                     else:
                         color = (0, 0, 0)  # Unexplored and not visible
-                    self.game_console.print(x + 1, y + 1, tile.tile_type.value, color)
+                    if tile.tile_type == TileType.DOOR:
+                        if tile.is_open:
+                            char = '/'
+                        else:
+                            char = '+'
+                        self.game_console.print(x + 1, y + 1, char, color)
+                    else:
+                        self.game_console.print(x + 1, y + 1, tile.tile_type.value, color)
 
     def render_entities(self):
         for entity in self.world.entities:
