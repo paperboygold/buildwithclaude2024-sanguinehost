@@ -39,6 +39,7 @@ Key components:
 
 - Arrow keys: Move the player
 - 'i': Interact with adjacent NPCs
+- '.': Wait a turn
 - 'q': Quit the game
 
 ## Why This Matters
