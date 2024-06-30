@@ -8,13 +8,13 @@ from enum import Enum, auto
 import logging
 import traceback
 from typing import Optional
-from character_cards import character_cards
+from character_cards import get_character_card, set_character_card
 import json
 from mapgen import generate_map, TileType, Tile
 import random
 from dijkstra_map import DijkstraMap
 import time
-from ecs import Entity, Component
+from ecs import Entity, Component, NPCComponent, KnowledgeComponent, NPCState
 
 def setup_logging():
     logging.basicConfig(
@@ -82,83 +82,92 @@ class Player(GameEntity):
     def __init__(self, x, y):
         super().__init__(x, y, '@', 'Player')
 
-class NPCState(Enum):
-    IDLE = auto()
-    PATROL = auto()
-    ALERT = auto()
-    FLEE = auto()
-
 class NPC(GameEntity):
     def __init__(self, x, y, name, character_card_key):
         super().__init__(x, y, 'N', name)
-        self.character_card = character_cards.get(character_card_key, "")
-        self.knowledge = NPCKnowledge()
-        self.state = NPCState.IDLE
-        self.target = None
-        self.dijkstra_map = None
-        self.last_move_time = 0
-        self.move_delay = 0.5  # Move every 0.5 seconds
-        self.last_conversation_time = 0
-        self.conversation_cooldown = 30  # 30 seconds cooldown between conversations
-        self.current_conversation = None
-        self.conversation_partner = None
-        self.conversation_turns = 0
+        self.add_component(NPCComponent(name, character_card_key))
+        self.add_component(KnowledgeComponent())
         self.color = (random.randint(100, 255), random.randint(100, 255), random.randint(100, 255))
-        self.dialogue_history = []
+
+    @property
+    def state(self):
+        return self.get_component(NPCComponent).state
+
+    @state.setter
+    def state(self, value):
+        self.get_component(NPCComponent).state = value
+
+    @property
+    def knowledge(self):
+        return self.get_component(KnowledgeComponent)
 
     def update(self, game_map):
+        npc_component = self.get_component(NPCComponent)
         current_time = time.time()
-        if current_time - self.last_move_time < self.move_delay:
+        if current_time - npc_component.last_move_time < npc_component.move_delay:
             return
 
-        if self.state == NPCState.IDLE:
+        if npc_component.state == NPCState.IDLE:
             if random.random() < 0.1:
-                self.state = NPCState.PATROL
-                self.target = game_map.get_random_walkable_position()
-                self.dijkstra_map = DijkstraMap(game_map.width, game_map.height)
-                self.dijkstra_map.compute([self.target], game_map.is_walkable)
-        elif self.state == NPCState.PATROL:
-            if self.target:
-                direction = self.dijkstra_map.get_direction(int(self.x), int(self.y))
+                npc_component.state = NPCState.PATROL
+                npc_component.target = game_map.get_random_walkable_position()
+                npc_component.dijkstra_map = DijkstraMap(game_map.width, game_map.height)
+                npc_component.dijkstra_map.compute([npc_component.target], game_map.is_walkable)
+        elif npc_component.state == NPCState.PATROL:
+            if npc_component.target:
+                direction = npc_component.dijkstra_map.get_direction(int(self.x), int(self.y))
                 if direction:
                     new_x = self.x + direction[0]
                     new_y = self.y + direction[1]
                     if game_map.is_walkable(int(new_x), int(new_y)):
                         self.x = new_x
                         self.y = new_y
-                        self.last_move_time = current_time
+                        npc_component.last_move_time = current_time
 
-                if (int(self.x), int(self.y)) == self.target:
-                    self.state = NPCState.IDLE
-                    self.target = None
-                    self.dijkstra_map = None
+                if (int(self.x), int(self.y)) == npc_component.target:
+                    npc_component.state = NPCState.IDLE
+                    npc_component.target = None
+                    npc_component.dijkstra_map = None
             else:
-                self.state = NPCState.IDLE
+                npc_component.state = NPCState.IDLE
 
-class NPCKnowledge:
+class MessageChannel(Enum):
+    COMBAT = auto()
+    DIALOGUE = auto()
+    SYSTEM = auto()
+    IMPORTANT = auto()
+    MOVEMENT = auto()
+
+class Message:
+    def __init__(self, text, channel, color):
+        self.text = text
+        self.channel = channel
+        self.color = color
+
+class WorldState:
     def __init__(self):
-        self.known_npcs = {}
-        self.known_locations = set()
+        self.player_actions = []
+        self.discovered_areas = set()
+        self.defeated_enemies = []
+        self.acquired_items = []
 
-    def add_npc(self, npc_name, relationship="stranger", relationship_story=""):
-        self.known_npcs[npc_name] = {"relationship": relationship, "story": relationship_story}
-
-    def update_relationship(self, npc_name, relationship, relationship_story=""):
-        if npc_name in self.known_npcs:
-            self.known_npcs[npc_name]["relationship"] = relationship
-            if relationship_story:
-                self.known_npcs[npc_name]["story"] = relationship_story
-
-    def add_location(self, location):
-        self.known_locations.add(location)
+    def update(self, action, data):
+        if action == "move":
+            self.player_actions.append(f"Moved to {data}")
+        elif action == "discover":
+            self.discovered_areas.add(data)
+        elif action == "defeat":
+            self.defeated_enemies.append(data)
+        elif action == "acquire":
+            self.acquired_items.append(data)
 
     def get_summary(self):
-        npc_info = ", ".join([f"{name} ({info['relationship']})" for name, info in self.known_npcs.items()])
-        location_info = ", ".join(self.known_locations)
-        return f"Known NPCs: {npc_info}. Known locations: {location_info}."
-
-    def get_relationship_story(self, npc_name):
-        return self.known_npcs.get(npc_name, {}).get("story", "")
+        return f"""
+Player Actions: {', '.join(self.player_actions[-5:])}
+Discovered Areas: {', '.join(self.discovered_areas)}
+Defeated Enemies: {', '.join(self.defeated_enemies[-5:])}
+Acquired Items: {', '.join(self.acquired_items[-5:])}
+"""
 
 class World:
     def __init__(self, width, height, game):
@@ -210,7 +219,9 @@ class World:
                 npc2.knowledge.add_npc(npc1.name, relationship_type, relationship_story)
 
     def generate_relationship_story(self, npc1, npc2, relationship_type):
-        prompt = f"Generate a very brief story (1-2 sentences) about the {relationship_type} relationship between {npc1.name} and {npc2.name}. {npc1.name}'s character: {npc1.character_card}. {npc2.name}'s character: {npc2.character_card}."
+        npc1_component = npc1.get_component(NPCComponent)
+        npc2_component = npc2.get_component(NPCComponent)
+        prompt = f"Generate a very brief story (1-2 sentences) about the {relationship_type} relationship between {npc1.name} and {npc2.name}. {npc1.name}'s character: {npc1_component.character_card}. {npc2.name}'s character: {npc2_component.character_card}."
         
         self.game.logger.info(f"Generating relationship story for {npc1.name} and {npc2.name}")
         self.game.logger.debug(f"Relationship story prompt: {prompt}")
@@ -238,44 +249,6 @@ class World:
                 if npc1 != npc2 and self.game_map.is_in_fov(int(npc1.x), int(npc1.y)) and self.game_map.is_in_fov(int(npc2.x), int(npc2.y)):
                     potential_interactions.append((npc1, npc2))
         return potential_interactions
-
-class MessageChannel(Enum):
-    COMBAT = auto()
-    DIALOGUE = auto()
-    SYSTEM = auto()
-    IMPORTANT = auto()
-    MOVEMENT = auto()
-
-class Message:
-    def __init__(self, text, channel, color):
-        self.text = text
-        self.channel = channel
-        self.color = color
-
-class WorldState:
-    def __init__(self):
-        self.player_actions = []
-        self.discovered_areas = set()
-        self.defeated_enemies = []
-        self.acquired_items = []
-
-    def update(self, action, data):
-        if action == "move":
-            self.player_actions.append(f"Moved to {data}")
-        elif action == "discover":
-            self.discovered_areas.add(data)
-        elif action == "defeat":
-            self.defeated_enemies.append(data)
-        elif action == "acquire":
-            self.acquired_items.append(data)
-
-    def get_summary(self):
-        return f"""
-Player Actions: {', '.join(self.player_actions[-5:])}
-Discovered Areas: {', '.join(self.discovered_areas)}
-Defeated Enemies: {', '.join(self.defeated_enemies[-5:])}
-Acquired Items: {', '.join(self.acquired_items[-5:])}
-"""
 
 class Game:
     def __init__(self, world):
@@ -480,8 +453,9 @@ class Game:
 
     def start_dialogue(self, npc):
         try:
+            npc_component = npc.get_component(NPCComponent)
             self.logger.info(f"Starting dialogue with {npc.name}")
-            self.logger.debug(f"NPC {npc.name} character card: {npc.character_card}")
+            self.logger.debug(f"NPC {npc.name} character card: {npc_component.character_card}")
             self.logger.debug(f"NPC {npc.name} knowledge: {npc.knowledge.get_summary()}")
             self.show_message(f"You are now talking to {npc.name}", MessageChannel.DIALOGUE, sender=npc)
             
@@ -495,7 +469,7 @@ class Game:
                 self.logger.debug(f"Processing user input: {user_input}")
                 self.show_message(f"You: {user_input}", MessageChannel.DIALOGUE, (0, 255, 0))
             
-                npc.dialogue_history.append({"role": "user", "content": user_input})
+                npc_component.dialogue_history.append({"role": "user", "content": user_input})
                 
                 try:
                     relationship_info = ""
@@ -505,19 +479,19 @@ class Game:
                         relationship_story = relationship_data["story"]
                         relationship_info = f"You have a {relationship} relationship with {other_npc_name}. {relationship_story} "
 
-                    system_prompt = f"""You are {npc.name}, an NPC in a roguelike game. Character: {npc.character_card}
+                    system_prompt = f"""You are {npc.name}, an NPC in a roguelike game. Character: {npc_component.character_card}
 Environmental knowledge: {npc.knowledge.get_summary()}
 {relationship_info}Respond in character with extremely brief responses, typically 1-2 short sentences or 10 words or less. Be concise and direct.
 Important: Speak only in dialogue. Do not describe actions, appearances, use asterisks or quotation marks. Simply respond with what your character would say."""
                     
                     self.logger.info(f"API Request for {npc.name}:")
                     self.logger.info(f"System Prompt: {system_prompt}")
-                    self.logger.debug(f"Dialogue history: {json.dumps(npc.dialogue_history, indent=2)}")
+                    self.logger.debug(f"Dialogue history: {json.dumps(npc_component.dialogue_history, indent=2)}")
                     
                     request_body = {
                         "model": "claude-3-5-sonnet-20240620",
                         "max_tokens": 50,
-                        "messages": npc.dialogue_history,
+                        "messages": npc_component.dialogue_history,
                         "system": system_prompt,
                         "temperature": 0.7,
                         "top_p": 1,
@@ -531,7 +505,7 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
                     self.logger.info(f"Response: {json.dumps(response.model_dump(), indent=2)}")
                     
                     npc_response = response.content[0].text if response.content else ""
-                    npc.dialogue_history.append({"role": "assistant", "content": npc_response})
+                    npc_component.dialogue_history.append({"role": "assistant", "content": npc_response})
                     
                     self.show_message(f"{npc.name}: {npc_response}", MessageChannel.DIALOGUE, sender=npc)
                 except Exception as e:
@@ -545,13 +519,15 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
 
     def start_npc_dialogue(self, npc1, npc2):
         try:
+            npc1_component = npc1.get_component(NPCComponent)
+            npc2_component = npc2.get_component(NPCComponent)
             current_time = time.time()
-            if current_time - npc1.last_conversation_time < npc1.conversation_cooldown or \
-               current_time - npc2.last_conversation_time < npc2.conversation_cooldown:
+            if current_time - npc1_component.last_conversation_time < npc1_component.conversation_cooldown or \
+               current_time - npc2_component.last_conversation_time < npc2_component.conversation_cooldown:
                 return  # Skip if either NPC is on cooldown
 
-            npc1.last_conversation_time = current_time
-            npc2.last_conversation_time = current_time
+            npc1_component.last_conversation_time = current_time
+            npc2_component.last_conversation_time = current_time
 
             player_can_see = self.world.game_map.is_in_fov(int(self.world.player.x), int(self.world.player.y)) and \
                              (self.world.game_map.is_in_fov(int(npc1.x), int(npc1.y)) or 
@@ -563,8 +539,8 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
             relationship_info = npc1.knowledge.get_relationship_story(npc2.name) or ""
              
             system_prompt = f"""You are simulating a conversation between {npc1.name} and {npc2.name} in a dungeon setting.
-{npc1.name}'s character: {npc1.character_card}
-{npc2.name}'s character: {npc2.character_card}
+{npc1.name}'s character: {npc1_component.character_card}
+{npc2.name}'s character: {npc2_component.character_card}
 Their relationship: {relationship_info}
 Environmental knowledge: {npc1.knowledge.get_summary()}
 Keep responses brief and in character, typically 1-2 short sentences or 10-15 words. Be concise and direct.
@@ -574,8 +550,8 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
             npc_prompt = f"You are {npc1.name}. Start a conversation with {npc2.name} in character, briefly and naturally."
             
             self.logger.info(f"Starting NPC dialogue between {npc1.name} and {npc2.name}")
-            self.logger.debug(f"NPC1 {npc1.name} character card: {npc1.character_card}")
-            self.logger.debug(f"NPC2 {npc2.name} character card: {npc2.character_card}")
+            self.logger.debug(f"NPC1 {npc1.name} character card: {npc1_component.character_card}")
+            self.logger.debug(f"NPC2 {npc2.name} character card: {npc2_component.character_card}")
             self.logger.debug(f"Relationship info: {relationship_info}")
             self.logger.info(f"API Request for {npc1.name}:")
             self.logger.info(f"System Prompt: {system_prompt}")
@@ -606,12 +582,12 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
                 self.show_message(f"{npc1.name}: {npc_response}", MessageChannel.DIALOGUE, sender=npc1)
 
             # Store the conversation for future reference
-            npc1.current_conversation = conversation
-            npc2.current_conversation = conversation
-            npc1.conversation_partner = npc2
-            npc2.conversation_partner = npc1
-            npc1.conversation_turns = 1
-            npc2.conversation_turns = 0
+            npc1_component.current_conversation = conversation
+            npc2_component.current_conversation = conversation
+            npc1_component.conversation_partner = npc2
+            npc2_component.conversation_partner = npc1
+            npc1_component.conversation_turns = 1
+            npc2_component.conversation_turns = 0
 
             self.logger.info(f"Conversation started. Turn counts: {npc1.name} = 1, {npc2.name} = 0")
 
@@ -623,20 +599,22 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
 
     def continue_npc_dialogue(self, npc1, npc2):
         try:
+            npc1_component = npc1.get_component(NPCComponent)
+            npc2_component = npc2.get_component(NPCComponent)
             player_can_see = self.world.game_map.is_in_fov(int(self.world.player.x), int(self.world.player.y)) and \
                              (self.world.game_map.is_in_fov(int(npc1.x), int(npc1.y)) or 
                               self.world.game_map.is_in_fov(int(npc2.x), int(npc2.y)))
 
-            conversation = npc1.current_conversation
+            conversation = npc1_component.current_conversation
             self.logger.info(f"Continuing NPC dialogue between {npc1.name} and {npc2.name}")
             self.logger.debug(f"Current conversation state: {json.dumps(conversation, indent=2)}")
 
             # Determine which NPC should speak next
-            current_npc = npc2 if npc1.conversation_turns > npc2.conversation_turns else npc1
+            current_npc = npc2 if npc1_component.conversation_turns > npc2_component.conversation_turns else npc1
             other_npc = npc1 if current_npc == npc2 else npc2
 
             self.logger.debug(f"Current speaker: {current_npc.name}, Responding to: {other_npc.name}")
-            self.logger.debug(f"Conversation turns - {npc1.name}: {npc1.conversation_turns}, {npc2.name}: {npc2.conversation_turns}")
+            self.logger.debug(f"Conversation turns - {npc1.name}: {npc1_component.conversation_turns}, {npc2.name}: {npc2_component.conversation_turns}")
 
             # Check the role of the last message and set the next role accordingly
             last_role = conversation[-1]["role"] if conversation else "assistant"
@@ -650,7 +628,7 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
                 })
 
             system_prompt = f"""You are {current_npc.name} in a conversation with {other_npc.name} in a dungeon setting.
-{current_npc.name}'s character: {current_npc.character_card}
+{current_npc.name}'s character: {current_npc.get_component(NPCComponent).character_card}
 Keep responses brief and in character, typically 1-2 short sentences or 10-15 words. Be concise and direct.
 Important: Speak only in dialogue. Do not describe actions, appearances, use asterisks or quotation marks. Simply respond with what the character would say."""
 
@@ -680,13 +658,13 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
                     self.show_message(f"{current_npc.name}: {npc_response}", MessageChannel.DIALOGUE, sender=current_npc)
 
                 # Update the conversation for both NPCs
-                npc1.current_conversation = conversation
-                npc2.current_conversation = conversation
+                npc1_component.current_conversation = conversation
+                npc2_component.current_conversation = conversation
 
                 # Increment the conversation turn counter for the current NPC
-                current_npc.conversation_turns += 1
+                current_npc.get_component(NPCComponent).conversation_turns += 1
 
-                self.logger.info(f"Updated turn counts: {npc1.name} = {npc1.conversation_turns}, {npc2.name} = {npc2.conversation_turns}")
+                self.logger.info(f"Updated turn counts: {npc1.name} = {npc1_component.conversation_turns}, {npc2.name} = {npc2_component.conversation_turns}")
                 self.logger.info(f"Updated conversation state: {json.dumps(conversation, indent=2)}")
             else:
                 self.logger.warning(f"Empty response received for {current_npc.name}. Ending conversation.")
@@ -700,12 +678,14 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
             self.end_npc_conversation(npc1, npc2)
 
     def end_npc_conversation(self, npc1, npc2):
-        npc1.current_conversation = None
-        npc2.current_conversation = None
-        npc1.conversation_partner = None
-        npc2.conversation_partner = None
-        npc1.conversation_turns = 0
-        npc2.conversation_turns = 0
+        npc1_component = npc1.get_component(NPCComponent)
+        npc2_component = npc2.get_component(NPCComponent)
+        npc1_component.current_conversation = None
+        npc2_component.current_conversation = None
+        npc1_component.conversation_partner = None
+        npc2_component.conversation_partner = None
+        npc1_component.conversation_turns = 0
+        npc2_component.conversation_turns = 0
         self.logger.info(f"Conversation between {npc1.name} and {npc2.name} has ended.")
  
     def interact(self):
@@ -773,12 +753,12 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
                             self.logger.debug("Checking for potential NPC interactions")
                             potential_interactions = self.world.get_potential_npc_interactions()
                             for npc1, npc2 in potential_interactions:
-                                if not npc1.current_conversation and random.random() < 0.3:  # 30% chance to start a conversation
+                                if not npc1.get_component(NPCComponent).current_conversation and random.random() < 0.3:  # 30% chance to start a conversation
                                     self.start_npc_dialogue(npc1, npc2)
                             
                             # Continue NPC dialogues after player action
                             for npc1, npc2 in potential_interactions:
-                                if npc1.current_conversation and npc1.conversation_turns < 3:
+                                if npc1.get_component(NPCComponent).current_conversation and npc1.get_component(NPCComponent).conversation_turns < 3:
                                     self.continue_npc_dialogue(npc1, npc2)
                                     break  # Only continue one conversation per turn
                         self.logger.debug("Game loop iteration completed")

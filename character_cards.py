@@ -18,3 +18,9 @@ Goals: To manipulate events from the shadows and test the worthiness of adventur
 Speech Style: Uses poetic language filled with double meanings and veiled warnings.
 """
 }
+
+def get_character_card(key, default=""):
+    return character_cards.get(key, default)
+
+def set_character_card(key, value):
+    character_cards[key] = value
