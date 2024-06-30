@@ -97,7 +97,12 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
                               self.game.world.game_map.is_in_fov(int(actor2.x), int(actor2.y)))
 
             if player_can_see:
-                self.game.show_message(f"{actor1.name} and {actor2.name} have started a conversation.", MessageChannel.DIALOGUE, sender=actor1)
+                choice = self.get_player_choice(f"{actor1.name} and {actor2.name} are about to have a conversation. Do you want to listen?")
+                if choice:
+                    self.game.show_message(f"{actor1.name} and {actor2.name} have started a conversation.", MessageChannel.DIALOGUE, sender=actor1)
+                else:
+                    self.summarize_conversation(actor1, actor2)
+                    return
 
             relationship_info = actor1.knowledge.get_relationship_story(actor2.name) or ""
              
@@ -159,6 +164,52 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
             self.logger.debug(traceback.format_exc())
             if player_can_see:
                 self.game.show_message(f"An error occurred during actor dialogue", MessageChannel.SYSTEM, (255, 0, 0))
+
+    def summarize_conversation(self, actor1, actor2):
+        try:
+            actor1_component = actor1.get_component(ActorComponent)
+            actor2_component = actor2.get_component(ActorComponent)
+            
+            system_prompt = f"""Summarize a brief conversation between {actor1.name} and {actor2.name} in a dungeon setting.
+            {actor1.name}'s character: {actor1_component.character_card}
+            {actor2.name}'s character: {actor2_component.character_card}
+            Their relationship: {actor1.knowledge.get_relationship_story(actor2.name) or ""}
+            Environmental knowledge: {actor1.knowledge.get_summary()}
+            Provide a single sentence summary of their conversation, focusing on the main topic or outcome."""
+
+            request_body = {
+                "model": "claude-3-5-sonnet-20240620",
+                "max_tokens": 100,
+                "messages": [{"role": "user", "content": "Summarize the conversation."}],
+                "system": system_prompt,
+                "temperature": 0.9
+            }
+            
+            response = self.anthropic_client.messages.create(**request_body)
+            summary = response.content[0].text if response.content else ""
+
+            self.game.show_message(summary, MessageChannel.DIALOGUE)
+
+        except Exception as e:
+            self.logger.error(f"Error in summarizing conversation: {str(e)}")
+            self.logger.debug(traceback.format_exc())
+            self.game.show_message(f"An error occurred while summarizing the conversation", MessageChannel.SYSTEM, (255, 0, 0))
+
+    def get_player_choice(self, prompt):
+        self.game.show_message(prompt, MessageChannel.SYSTEM, (255, 255, 0))
+        self.game.show_message("Press Y to listen or N to ignore.", MessageChannel.SYSTEM, (255, 255, 0))
+        
+        while True:
+            for event in tcod.event.wait():
+                if event.type == "QUIT":
+                    raise SystemExit()
+                elif event.type == "KEYDOWN":
+                    if event.sym == KeySym.y:
+                        return True
+                    elif event.sym == KeySym.n:
+                        return False
+            
+            self.game.render_system.render()
 
     def continue_actor_dialogue(self, actor1, actor2):
         try:
