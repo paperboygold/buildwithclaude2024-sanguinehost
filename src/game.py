@@ -10,6 +10,7 @@ from systems.DialogueSystem import DialogueSystem
 from utils.load_api_key import load_api_key
 from components.ActorComponent import ActorComponent
 from entities.Actor import Actor
+from systems.PlayerSystem import PlayerSystem
 
 class Game:
     def __init__(self, world):
@@ -36,6 +37,9 @@ class Game:
 
             # Initialize dialogue system
             self.dialogue_system = DialogueSystem(self)
+
+            # Initialize player system
+            self.player_system = PlayerSystem(self)
 
         except Exception as e:
             self.logger.error(f"Error initializing game: {str(e)}")
@@ -103,22 +107,11 @@ class Game:
         self.render_system.render()
 
     def interact(self):
-        player_x, player_y = int(self.world.player.x), int(self.world.player.y)
-        self.logger.debug(f"Player attempting to interact at position ({player_x}, {player_y})")
-        for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:  # Check adjacent tiles
-            entity = self.world.get_entity_at(player_x + dx, player_y + dy)
-            if isinstance(entity, Actor):
-                self.dialogue_system.start_dialogue(entity)
-                return
-        self.show_message("There's no one to interact with.", MessageChannel.SYSTEM, (255, 255, 0))
+        return self.player_system.interact()
 
     def move_player(self, dx, dy):
-        new_x = int(self.world.player.x + dx)
-        new_y = int(self.world.player.y + dy)
-        self.logger.debug(f"Attempting to move player to ({new_x}, {new_y})")
-        if self.world.game_map.is_walkable(new_x, new_y):
-            self.world.player.x = new_x
-            self.world.player.y = new_y
+        return self.player_system.move_player(dx, dy)
+
     def run(self):
         try:
             self.logger.info("Starting game loop")
