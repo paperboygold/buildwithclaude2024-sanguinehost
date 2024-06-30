@@ -19,6 +19,7 @@ from utils.load_api_key import load_api_key
 from systems.MessageSystem import MessageSystem, MessageChannel, Message
 from systems.RenderSystem import RenderSystem
 from systems.InputSystem import InputSystem
+from systems.DialogueSystem import DialogueSystem
 from world import World
 
 class GameEntity(Entity):
@@ -73,6 +74,9 @@ class Game:
 
             # Initialize input system
             self.input_system = InputSystem(self)
+
+            # Initialize dialogue system
+            self.dialogue_system = DialogueSystem(self)
 
         except Exception as e:
             self.logger.error(f"Error initializing game: {str(e)}")
@@ -135,302 +139,13 @@ class Game:
         self.message_system.add_message(text, channel, color)
         self.render_system.render()
 
-    def get_user_input(self, prompt):
-        user_input = ""
-        max_input_length = self.width * 3  # Allow for multiple lines
-        input_lines = []
-        cursor_pos = 0
-        ignore_next_i = True  # Add this flag
-
-        while True:
-            # Wrap the current input
-            wrapped_lines = textwrap.wrap(prompt + user_input, width=self.width - 2)
-            
-            # Update the message log with the wrapped input
-            self.message_system.message_log = self.message_system.message_log[:-len(input_lines)] if input_lines else self.message_system.message_log
-            input_lines = [Message(line, MessageChannel.SYSTEM, (0, 255, 0)) for line in wrapped_lines]  # Change color to green
-            self.message_system.message_log.extend(input_lines)
-
-            # Ensure we don't exceed the visible log lines
-            while len(self.message_system.message_log) > self.visible_log_lines:
-                self.message_system.message_log.pop(0)
-
-            self.render_system.render()  # Render the game state
-
-            for event in tcod.event.wait():
-                if event.type == "QUIT":
-                    raise SystemExit()
-                elif event.type == "KEYDOWN":
-                    if event.sym == KeySym.RETURN and user_input:
-                        # Remove temporary input lines
-                        self.message_system.message_log = self.message_system.message_log[:-len(input_lines)]
-                        # Don't add the final input as a message here
-                        return user_input
-                    elif event.sym == KeySym.BACKSPACE:
-                        if user_input:
-                            user_input = user_input[:cursor_pos-1] + user_input[cursor_pos:]
-                            cursor_pos = max(0, cursor_pos - 1)
-                    elif event.sym == KeySym.ESCAPE:
-                        self.message_system.message_log = self.message_system.message_log[:-len(input_lines)]
-                        return None
-                elif event.type == "TEXTINPUT":
-                    if len(user_input) < max_input_length:
-                        if ignore_next_i and event.text == 'i':
-                            ignore_next_i = False  # Reset the flag
-                        else:
-                            user_input = user_input[:cursor_pos] + event.text + user_input[cursor_pos:]
-                            cursor_pos += len(event.text)
-
-            # Add cursor to the end of the last line
-            if input_lines:
-                last_line = input_lines[-1].text
-                cursor_line = last_line[:cursor_pos] + "_" + last_line[cursor_pos:]
-                self.message_system.message_log[-1] = Message(cursor_line, MessageChannel.SYSTEM, (0, 255, 0))  # Change color to green
-
-    def start_dialogue(self, actor):
-        try:
-            actor_component = actor.get_component(ActorComponent)
-            self.logger.info(f"Starting dialogue with {actor.name}")
-            self.logger.debug(f"Actor {actor.name} character card: {actor_component.character_card}")
-            self.logger.debug(f"Actor {actor.name} knowledge: {actor.knowledge.get_summary()}")
-            self.show_message(f"You are now talking to {actor.name}", MessageChannel.DIALOGUE, sender=actor)
-            
-            while True:
-                user_input = self.get_user_input("You: ")
-                if user_input is None:  # User pressed Escape
-                    self.logger.info(f"Dialogue with {actor.name} ended by user")
-                    self.show_message("Dialogue ended.", MessageChannel.DIALOGUE, (0, 255, 255))
-                    break
-            
-                self.logger.debug(f"Processing user input: {user_input}")
-                self.show_message(f"You: {user_input}", MessageChannel.DIALOGUE, (0, 255, 0))
-            
-                actor_component.dialogue_history.append({"role": "user", "content": user_input})
-                
-                try:
-                    relationship_info = ""
-                    if actor.knowledge.known_actors:
-                        other_actor_name, relationship_data = next(iter(actor.knowledge.known_actors.items()))
-                        relationship = relationship_data["relationship"]
-                        relationship_story = relationship_data["story"]
-                        relationship_info = f"You have a {relationship} relationship with {other_actor_name}. {relationship_story} "
-
-                    system_prompt = f"""You are {actor.name}, an NPC in a roguelike game. Character: {actor_component.character_card}
-Environmental knowledge: {actor.knowledge.get_summary()}
-{relationship_info}Respond in character with extremely brief responses, typically 1-2 short sentences or 10 words or less. Be concise and direct.
-Important: Speak only in dialogue. Do not describe actions, appearances, use asterisks or quotation marks. Simply respond with what your character would say."""
-                    
-                    self.logger.info(f"API Request for {actor.name}:")
-                    self.logger.info(f"System Prompt: {system_prompt}")
-                    self.logger.debug(f"Dialogue history: {json.dumps(actor_component.dialogue_history, indent=2)}")
-                    
-                    request_body = {
-                        "model": "claude-3-5-sonnet-20240620",
-                        "max_tokens": 50,
-                        "messages": actor_component.dialogue_history,
-                        "system": system_prompt,
-                        "temperature": 0.7,
-                        "top_p": 1,
-                        "stream": False,
-                        "stop_sequences": ["\n\nHuman:", "\n\nSystem:", "\n\nAssistant:"]
-                    }
-                    
-                    response = self.anthropic_client.messages.create(**request_body)
-                    
-                    self.logger.info(f"API Response for {actor.name}:")
-                    self.logger.info(f"Response: {json.dumps(response.model_dump(), indent=2)}")
-                    
-                    actor_response = response.content[0].text if response.content else ""
-                    actor_component.dialogue_history.append({"role": "assistant", "content": actor_response})
-                    
-                    self.show_message(f"{actor.name}: {actor_response}", MessageChannel.DIALOGUE, sender=actor)
-                except Exception as e:
-                    self.logger.error(f"Error in AI response: {str(e)}")
-                    self.logger.debug(traceback.format_exc())
-                    self.show_message(f"Error: Unable to get NPC response", MessageChannel.SYSTEM, (255, 0, 0))
-        except Exception as e:
-            self.logger.error(f"Error in dialogue: {str(e)}")
-            self.logger.debug(traceback.format_exc())
-            self.show_message(f"An error occurred during dialogue", MessageChannel.SYSTEM, (255, 0, 0))
-
-    def start_actor_dialogue(self, actor1, actor2):
-        try:
-            actor1_component = actor1.get_component(ActorComponent)
-            actor2_component = actor2.get_component(ActorComponent)
-            current_time = time.time()
-            if current_time - actor1_component.last_conversation_time < actor1_component.conversation_cooldown or \
-               current_time - actor2_component.last_conversation_time < actor2_component.conversation_cooldown:
-                return  # Skip if either actor is on cooldown
-
-            actor1_component.last_conversation_time = current_time
-            actor2_component.last_conversation_time = current_time
-
-            player_can_see = self.world.game_map.is_in_fov(int(self.world.player.x), int(self.world.player.y)) and \
-                             (self.world.game_map.is_in_fov(int(actor1.x), int(actor1.y)) or 
-                              self.world.game_map.is_in_fov(int(actor2.x), int(actor2.y)))
-
-            if player_can_see:
-                self.show_message(f"{actor1.name} and {actor2.name} have started a conversation.", MessageChannel.DIALOGUE, sender=actor1)
-
-            relationship_info = actor1.knowledge.get_relationship_story(actor2.name) or ""
-             
-            system_prompt = f"""You are simulating a conversation between {actor1.name} and {actor2.name} in a dungeon setting.
-{actor1.name}'s character: {actor1_component.character_card}
-{actor2.name}'s character: {actor2_component.character_card}
-Their relationship: {relationship_info}
-Environmental knowledge: {actor1.knowledge.get_summary()}
-Keep responses brief and in character, typically 1-2 short sentences or 10-15 words. Be concise and direct.
-Important: Speak only in dialogue. Do not describe actions, appearances, use asterisks or quotation marks. Simply respond with what the character would say."""
-
-            # Define the initial prompt
-            actor_prompt = f"You are {actor1.name}. Start a conversation with {actor2.name} in character, briefly and naturally."
-            
-            self.logger.info(f"Starting actor dialogue between {actor1.name} and {actor2.name}")
-            self.logger.debug(f"Actor1 {actor1.name} character card: {actor1_component.character_card}")
-            self.logger.debug(f"Actor2 {actor2.name} character card: {actor2_component.character_card}")
-            self.logger.debug(f"Relationship info: {relationship_info}")
-            self.logger.info(f"API Request for {actor1.name}:")
-            self.logger.info(f"System Prompt: {system_prompt}")
-            self.logger.info(f"Actor Prompt: {actor_prompt}")
-            
-            request_body = {
-                "model": "claude-3-5-sonnet-20240620",
-                "max_tokens": 100,
-                "messages": [{"role": "user", "content": actor_prompt}],
-                "system": system_prompt,
-                "temperature": 0.7
-            }
-            
-            response = self.anthropic_client.messages.create(**request_body)
-            
-            self.logger.info(f"API Response for {actor1.name}:")
-            self.logger.info(f"Response: {json.dumps(response.model_dump(), indent=2)}")
-            
-            actor_response = response.content[0].text if response.content else ""
-
-            # Start a new conversation
-            conversation = [
-                {"role": "user", "content": actor_prompt},
-                {"role": "assistant", "content": actor_response}
-            ]
-            
-            if player_can_see:
-                self.show_message(f"{actor1.name}: {actor_response}", MessageChannel.DIALOGUE, sender=actor1)
-
-            # Store the conversation for future reference
-            actor1_component.current_conversation = conversation
-            actor2_component.current_conversation = conversation
-            actor1_component.conversation_partner = actor2
-            actor2_component.conversation_partner = actor1
-            actor1_component.conversation_turns = 1
-            actor2_component.conversation_turns = 0
-
-            self.logger.info(f"Conversation started. Turn counts: {actor1.name} = 1, {actor2.name} = 0")
-
-        except Exception as e:
-            self.logger.error(f"Error in actor dialogue: {str(e)}")
-            self.logger.debug(traceback.format_exc())
-            if player_can_see:
-                self.show_message(f"An error occurred during actor dialogue", MessageChannel.SYSTEM, (255, 0, 0))
-
-    def continue_actor_dialogue(self, actor1, actor2):
-        try:
-            actor1_component = actor1.get_component(ActorComponent)
-            actor2_component = actor2.get_component(ActorComponent)
-            player_can_see = self.world.game_map.is_in_fov(int(self.world.player.x), int(self.world.player.y)) and \
-                             (self.world.game_map.is_in_fov(int(actor1.x), int(actor1.y)) or 
-                              self.world.game_map.is_in_fov(int(actor2.x), int(actor2.y)))
-
-            conversation = actor1_component.current_conversation
-            self.logger.info(f"Continuing actor dialogue between {actor1.name} and {actor2.name}")
-            self.logger.debug(f"Current conversation state: {json.dumps(conversation, indent=2)}")
-
-            # Determine which actor should speak next
-            current_actor = actor2 if actor1_component.conversation_turns > actor2_component.conversation_turns else actor1
-            other_actor = actor1 if current_actor == actor2 else actor2
-
-            self.logger.debug(f"Current speaker: {current_actor.name}, Responding to: {other_actor.name}")
-            self.logger.debug(f"Conversation turns - {actor1.name}: {actor1_component.conversation_turns}, {actor2.name}: {actor2_component.conversation_turns}")
-
-            # Check the role of the last message and set the next role accordingly
-            last_role = conversation[-1]["role"] if conversation else "assistant"
-            next_role = "user" if last_role == "assistant" else "assistant"
-
-            # Add the prompt for the current actor to speak next
-            if next_role == "user":
-                conversation.append({
-                    "role": "user",
-                    "content": f"{current_actor.name}, respond to {other_actor.name}'s last statement."
-                })
-
-            system_prompt = f"""You are {current_actor.name} in a conversation with {other_actor.name} in a dungeon setting.
-{current_actor.name}'s character: {current_actor.get_component(ActorComponent).character_card}
-Keep responses brief and in character, typically 1-2 short sentences or 10-15 words. Be concise and direct.
-Important: Speak only in dialogue. Do not describe actions, appearances, use asterisks or quotation marks. Simply respond with what the character would say."""
-
-            self.logger.info(f"API Request for {current_actor.name}:")
-            self.logger.info(f"System Prompt: {system_prompt}")
-            self.logger.info(f"Messages: {json.dumps(conversation, indent=2)}")
-            
-            request_body = {
-                "model": "claude-3-5-sonnet-20240620",
-                "max_tokens": 100,
-                "messages": conversation,
-                "system": system_prompt,
-                "temperature": 0.7
-            }
-            
-            response = self.anthropic_client.messages.create(**request_body)
-            
-            self.logger.info(f"API Response for {current_actor.name}:")
-            self.logger.info(f"Response: {json.dumps(response.model_dump(), indent=2)}")
-            
-            actor_response = response.content[0].text if response.content else ""
-            
-            if actor_response.strip():  # Only add non-empty responses
-                conversation.append({"role": "assistant", "content": actor_response})
-                
-                if player_can_see:
-                    self.show_message(f"{current_actor.name}: {actor_response}", MessageChannel.DIALOGUE, sender=current_actor)
-
-                # Update the conversation for both actors
-                actor1_component.current_conversation = conversation
-                actor2_component.current_conversation = conversation
-
-                # Increment the conversation turn counter for the current actor
-                current_actor.get_component(ActorComponent).conversation_turns += 1
-
-                self.logger.info(f"Updated turn counts: {actor1.name} = {actor1_component.conversation_turns}, {actor2.name} = {actor2_component.conversation_turns}")
-                self.logger.info(f"Updated conversation state: {json.dumps(conversation, indent=2)}")
-            else:
-                self.logger.warning(f"Empty response received for {current_actor.name}. Ending conversation.")
-                self.end_actor_conversation(actor1, actor2)
-
-        except Exception as e:
-            self.logger.error(f"Error in continuing actor dialogue: {str(e)}")
-            self.logger.debug(traceback.format_exc())
-            if player_can_see:
-                self.show_message(f"An error occurred during actor dialogue", MessageChannel.SYSTEM, (255, 0, 0))
-            self.end_actor_conversation(actor1, actor2)
-
-    def end_actor_conversation(self, actor1, actor2):
-        actor1_component = actor1.get_component(ActorComponent)
-        actor2_component = actor2.get_component(ActorComponent)
-        actor1_component.current_conversation = None
-        actor2_component.current_conversation = None
-        actor1_component.conversation_partner = None
-        actor2_component.conversation_partner = None
-        actor1_component.conversation_turns = 0
-        actor2_component.conversation_turns = 0
-        self.logger.info(f"Conversation between {actor1.name} and {actor2.name} has ended.")
- 
     def interact(self):
         player_x, player_y = int(self.world.player.x), int(self.world.player.y)
         self.logger.debug(f"Player attempting to interact at position ({player_x}, {player_y})")
         for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:  # Check adjacent tiles
             entity = self.world.get_entity_at(player_x + dx, player_y + dy)
             if isinstance(entity, Actor):
-                self.start_dialogue(entity)
+                self.dialogue_system.start_dialogue(entity)
                 return
         self.show_message("There's no one to interact with.", MessageChannel.SYSTEM, (255, 255, 0))
 
@@ -464,12 +179,12 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
                     potential_interactions = self.world.get_potential_actor_interactions()
                     for actor1, actor2 in potential_interactions:
                         if not actor1.get_component(ActorComponent).current_conversation and random.random() < 0.3:  # 30% chance to start a conversation
-                            self.start_actor_dialogue(actor1, actor2)
+                            self.dialogue_system.start_actor_dialogue(actor1, actor2)
                     
                     # Continue actor dialogues after player action
                     for actor1, actor2 in potential_interactions:
                         if actor1.get_component(ActorComponent).current_conversation and actor1.get_component(ActorComponent).conversation_turns < 3:
-                            self.continue_actor_dialogue(actor1, actor2)
+                            self.dialogue_system.continue_actor_dialogue(actor1, actor2)
                             break  # Only continue one conversation per turn
                 self.logger.debug("Game loop iteration completed")
         except Exception as e:
@@ -510,3 +225,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
