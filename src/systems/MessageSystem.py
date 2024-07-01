@@ -33,3 +33,6 @@ class MessageSystem(System):
     def update(self, entities):
         # This method is required by the System class, but we don't need to update anything here
         pass
+
+    def clear_messages(self):
+        self.message_log.clear()

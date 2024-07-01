@@ -3,6 +3,7 @@ from components.PositionComponent import PositionComponent
 from systems.MessageSystem import MessageChannel
 from entities.Actor import Actor
 from utils.mapgen import TileType
+import tcod
 
 class PlayerSystem(System):
     def __init__(self, game):
@@ -14,12 +15,39 @@ class PlayerSystem(System):
         new_x = int(player.x + dx)
         new_y = int(player.y + dy)
         self.logger.debug(f"Attempting to move player to ({new_x}, {new_y})")
-        if self.game.world.game_map.is_walkable(new_x, new_y):
+        
+        target = self.game.world.get_entity_at(new_x, new_y)
+        if isinstance(target, Actor):
+            if target.aggressive:
+                self.game.combat_system.attack(player, target)
+                return True
+            else:
+                confirm = self.confirm_attack(target)
+                if confirm:
+                    self.game.combat_system.attack(player, target)
+                    return True
+                else:
+                    self.game.dialogue_system.start_dialogue(target)
+                    return True
+        elif self.game.world.game_map.is_walkable(new_x, new_y):
             player.get_component(PositionComponent).x = new_x
             player.get_component(PositionComponent).y = new_y
             self.game.fov_recompute = True
             return True
         return False
+
+    def confirm_attack(self, target):
+        self.game.show_message(f"Do you want to attack {target.name}? (Y/N)", MessageChannel.SYSTEM, (255, 255, 0))
+        while True:
+            for event in tcod.event.wait():
+                if event.type == "QUIT":
+                    raise SystemExit()
+                elif event.type == "KEYDOWN":
+                    if event.sym == tcod.event.KeySym.y:
+                        return True
+                    elif event.sym == tcod.event.KeySym.n:
+                        return False
+            self.game.render_system.render()
 
     def interact(self):
         player = self.game.world.player

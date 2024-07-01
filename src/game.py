@@ -6,13 +6,17 @@ from systems.GameInitializationSystem import GameInitializationSystem
 from systems.GameLoopSystem import GameLoopSystem
 from systems.MessageSystem import MessageChannel
 from entities.Actor import Actor
-import pickle
 import os
 from systems.MainMenuSystem import MainMenuSystem
 from utils.mapgen import MapType
 from world import World
 from entities.Player import Player
 import shelve
+import tcod
+from systems.CombatSystem import CombatSystem
+from systems.PlayerSystem import PlayerSystem
+from systems.DialogueSystem import DialogueSystem
+from systems.InputSystem import InputSystem
 
 
 class Game:
@@ -20,6 +24,8 @@ class Game:
         self.logger = logging.getLogger(__name__)
         try:
             self.world = world
+            if self.world:
+                self.world.game = self
             api_key = load_api_key()
             if not api_key:
                 raise ValueError("No API key provided")
@@ -31,6 +37,8 @@ class Game:
             
             self.loop_system = GameLoopSystem(self)
             self.main_menu_system = MainMenuSystem(self)
+            self.combat_system = CombatSystem(self)
+            self.game_over = False
 
         except Exception as e:
             self.logger.error(f"Error initializing game: {str(e)}")
@@ -74,7 +82,12 @@ class Game:
         # Add some NPCs
         self.add_npcs()
         
+        self.init_system.initialize_all()
+        self.render_system = self.init_system.game.render_system
+        self.fov_recompute = True
+        
         self.show_message("Welcome to Sanguine Host!", MessageChannel.SYSTEM)
+        self.game_over = False
 
     def add_npcs(self):
         from data.character_cards import get_character_card
@@ -114,9 +127,67 @@ class Game:
 
     def run(self):
         try:
-            self.main_menu_system.handle_main_menu()
-            self.loop_system.run()
+            while True:
+                self.reset_game_state()
+                self.main_menu_system.handle_main_menu()
+                if not self.game_over:
+                    self.loop_system.run()
         except Exception as e:
             self.logger.error(f"Error in game loop: {str(e)}")
             self.logger.debug(traceback.format_exc())
             print(f"An error occurred: {str(e)}. Please check the game.log file for details.")
+
+    def reset_game_state(self):
+        self.game_over = False
+        self.world = None
+        self.fov_recompute = True
+        
+        # Reset systems
+        self.init_system = GameInitializationSystem(self)
+        self.init_system.initialize_all()
+        self.render_system = self.init_system.game.render_system
+        self.message_system.clear_messages()
+        self.combat_system = CombatSystem(self)
+        self.loop_system = GameLoopSystem(self)
+        self.player_system = PlayerSystem(self)
+        self.dialogue_system = DialogueSystem(self)
+        self.input_system = InputSystem(self)
+        
+        # Reset game dimensions and consoles
+        self.init_system.initialize_game_dimensions()
+        self.init_system.initialize_consoles()
+        
+        # Reset camera and FOV
+        self.camera_x = 0
+        self.camera_y = 0
+        self.fov_radius = 10
+        
+        # Clear any existing entities
+        if hasattr(self, 'world') and self.world:
+            self.world.entities.clear()
+        
+        self.show_message("Game reset. Returning to main menu.", MessageChannel.SYSTEM)
+
+    def initialize_game_dimensions(self):
+        self.width = 80
+        self.height = 50
+        self.tile_size = 16
+        self.pixel_width = self.width * self.tile_size
+        self.pixel_height = self.height * self.tile_size
+        self.game_area_height = 38
+        self.dialogue_height = 12
+
+    def initialize_consoles(self):
+        self.context = tcod.context.new_terminal(
+            self.width,
+            self.height,
+            title="Sanguine Host",
+            vsync=True,
+            tileset=tcod.tileset.load_tilesheet(
+                "assets/tiles/terminal16x16_gs_ro.png", 16, 16, tcod.tileset.CHARMAP_CP437
+            )
+        )
+        self.root_console = tcod.console.Console(self.width, self.height)
+        self.game_console = tcod.console.Console(self.width, self.game_area_height)
+        self.dialogue_console = tcod.console.Console(self.width, self.dialogue_height)
+

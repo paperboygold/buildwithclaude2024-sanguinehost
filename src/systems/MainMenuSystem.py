@@ -34,8 +34,10 @@ class MainMenuSystem:
     def handle_main_menu(self):
         choice = self.show_main_menu()
         if choice == 'New Game':
+            self.game.reset_game_state()
             self.game.new_game()
         elif choice == 'Load Game':
+            self.game.reset_game_state()
             self.game.load_game()
         elif choice == 'Quit':
             raise SystemExit()

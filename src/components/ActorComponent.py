@@ -24,3 +24,4 @@ class ActorComponent(Component):
         self.current_conversation = None
         self.conversation_partner = None
         self.conversation_turns = 0
+        self.aggressor = None

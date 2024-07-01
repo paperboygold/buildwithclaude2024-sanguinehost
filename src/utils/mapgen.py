@@ -259,14 +259,37 @@ class Map:
         self.initialize_fov()
 
     def generate_cave(self):
-        cave = generate_cave(self.width, self.height)
+        # Initialize the cave with random walls, keeping borders solid
+        cave = [[1 if x == 0 or x == self.width - 1 or y == 0 or y == self.height - 1 else
+                 (1 if random.random() < 0.45 else 0)
+                 for x in range(self.width)] for y in range(self.height)]
+
+        # Cellular automata iterations
+        for _ in range(4):
+            new_cave = [[0 for _ in range(self.width)] for _ in range(self.height)]
+            for y in range(self.height):
+                for x in range(self.width):
+                    if x == 0 or x == self.width - 1 or y == 0 or y == self.height - 1:
+                        new_cave[y][x] = 1  # Keep borders solid
+                    else:
+                        wall_count = sum(cave[ny][nx] 
+                                         for ny in range(max(0, y-1), min(self.height, y+2))
+                                         for nx in range(max(0, x-1), min(self.width, x+2))
+                                         if (ny, nx) != (y, x))
+                        if cave[y][x] == 1:
+                            new_cave[y][x] = 1 if wall_count >= 4 else 0
+                        else:
+                            new_cave[y][x] = 1 if wall_count >= 5 else 0
+            cave = new_cave
+
+        # Ensure connectivity
+        cave = self.ensure_connectivity(cave)
+
+        # Set the tiles based on the cave layout
         for y in range(self.height):
             for x in range(self.width):
-                if cave[y][x] == 0:
-                    self.tiles[y][x] = Tile(TileType.FLOOR)
-                else:
-                    self.tiles[y][x] = Tile(TileType.WALL)
-        
+                self.tiles[y][x] = Tile(TileType.WALL if cave[y][x] else TileType.FLOOR)
+
         # Add some random cave chambers
         for _ in range(3):  # Add 3 random chambers
             chamber_width = random.randint(5, 10)
@@ -277,6 +300,47 @@ class Map:
         
         self.connect_chambers()
         self.initialize_fov()
+
+    def ensure_connectivity(self, cave):
+        start_x, start_y = self.width // 2, self.height // 2
+        
+        # Find a starting open space near the center
+        if cave[start_y][start_x] == 1:
+            for r in range(1, min(self.width, self.height) // 2):
+                for i in range(-r, r + 1):
+                    for j in range(-r, r + 1):
+                        new_x, new_y = start_x + i, start_y + j
+                        if 0 <= new_x < self.width and 0 <= new_y < self.height and cave[new_y][new_x] == 0:
+                            start_x, start_y = new_x, new_y
+                            break
+                    if cave[start_y][start_x] == 0:
+                        break
+                if cave[start_y][start_x] == 0:
+                    break
+        
+        # Flood fill from the starting point
+        self.flood_fill(cave, start_x, start_y)
+        
+        # Convert unreached areas to walls
+        for y in range(self.height):
+            for x in range(self.width):
+                if cave[y][x] == 0:
+                    cave[y][x] = 1
+                elif cave[y][x] == 2:
+                    cave[y][x] = 0
+        
+        return cave
+
+    def flood_fill(self, cave, x, y):
+        if x < 0 or x >= self.width or y < 0 or y >= self.height or cave[y][x] != 0:
+            return
+        
+        cave[y][x] = 2  # Mark as reached
+        
+        self.flood_fill(cave, x + 1, y)
+        self.flood_fill(cave, x - 1, y)
+        self.flood_fill(cave, x, y + 1)
+        self.flood_fill(cave, x, y - 1)
 
     def create_chamber(self, x, y, width, height):
         for chamber_y in range(y, y + height):
@@ -297,84 +361,27 @@ class Map:
             self.create_tunnel(start[0], start[1], end[0], end[1])
 
     def create_tunnel(self, x1, y1, x2, y2):
-        # Simple L-shaped tunnel
-        for x in range(min(x1, x2), max(x1, x2) + 1):
-            self.tiles[y1][x] = Tile(TileType.FLOOR)
-        for y in range(min(y1, y2), max(y1, y2) + 1):
-            self.tiles[y][x2] = Tile(TileType.FLOOR)
+        # Simple line drawing algorithm to create a tunnel
+        dx = abs(x2 - x1)
+        dy = abs(y2 - y1)
+        sx = 1 if x1 < x2 else -1
+        sy = 1 if y1 < y2 else -1
+        err = dx - dy
+
+        while True:
+            self.tiles[y1][x1] = Tile(TileType.FLOOR)
+            if x1 == x2 and y1 == y2:
+                break
+            e2 = 2 * err
+            if e2 > -dy:
+                err -= dy
+                x1 += sx
+            if e2 < dx:
+                err += dx
+                y1 += sy
 
     def __str__(self):
         return '\n'.join(''.join(tile.tile_type.value for tile in row) for row in self.tiles)
-
-def generate_cave(width, height, fill_probability=0.45, iterations=4):
-    # Initialize the cave with random walls, keeping borders solid
-    cave = [[1 if x == 0 or x == width - 1 or y == 0 or y == height - 1 else
-             (1 if random.random() < fill_probability else 0)
-             for x in range(width)] for y in range(height)]
-
-    # Run cellular automata iterations
-    for _ in range(iterations):
-        new_cave = [[0 for _ in range(width)] for _ in range(height)]
-        for y in range(height):
-            for x in range(width):
-                if x == 0 or x == width - 1 or y == 0 or y == height - 1:
-                    new_cave[y][x] = 1  # Keep borders solid
-                else:
-                    wall_count = sum(cave[ny][nx] 
-                                     for ny in range(max(0, y-1), min(height, y+2))
-                                     for nx in range(max(0, x-1), min(width, x+2))
-                                     if (ny, nx) != (y, x))
-                    if cave[y][x] == 1:
-                        new_cave[y][x] = 1 if wall_count >= 4 else 0
-                    else:
-                        new_cave[y][x] = 1 if wall_count >= 5 else 0
-        cave = new_cave
-
-    # Ensure connectivity
-    cave = ensure_connectivity(cave, width, height)
-
-    return cave
-
-def ensure_connectivity(cave, width, height):
-    start_x, start_y = width // 2, height // 2
-    
-    # Find a starting open space near the center
-    if cave[start_y][start_x] == 1:
-        for r in range(1, min(width, height) // 2):
-            for i in range(-r, r + 1):
-                for j in range(-r, r + 1):
-                    new_x, new_y = start_x + i, start_y + j
-                    if 0 <= new_x < width and 0 <= new_y < height and cave[new_y][new_x] == 0:
-                        start_x, start_y = new_x, new_y
-                        break
-                if cave[start_y][start_x] == 0:
-                    break
-            if cave[start_y][start_x] == 0:
-                break
-    
-    # Flood fill from the starting point
-    flood_fill(cave, start_x, start_y)
-    
-    # Convert unreached areas to walls
-    for y in range(height):
-        for x in range(width):
-            if cave[y][x] == 0:
-                cave[y][x] = 1
-            elif cave[y][x] == 2:
-                cave[y][x] = 0
-    
-    return cave
-
-def flood_fill(cave, x, y):
-    if x < 0 or x >= len(cave[0]) or y < 0 or y >= len(cave) or cave[y][x] != 0:
-        return
-    
-    cave[y][x] = 2  # Mark as reached
-    
-    flood_fill(cave, x + 1, y)
-    flood_fill(cave, x - 1, y)
-    flood_fill(cave, x, y + 1)
-    flood_fill(cave, x, y - 1)
 
 def generate_map(width, height, num_rooms, map_type=MapType.DUNGEON):
     game_map = Map(width, height, map_type)
@@ -387,3 +394,4 @@ if __name__ == "__main__":
     num_rooms = 10
     game_map = generate_map(map_width, map_height, num_rooms)
     print(game_map)
+

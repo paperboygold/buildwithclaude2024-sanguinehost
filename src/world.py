@@ -28,7 +28,7 @@ class World:
     def update_actors(self):
         for entity in self.entities:
             if isinstance(entity, Actor):
-                entity.update(self.game_map, self.player)
+                entity.update(self.game_map, self.player, self.game)
 
     def get_potential_actor_interactions(self):
         actor_entities = [entity for entity in self.entities if isinstance(entity, Actor)]

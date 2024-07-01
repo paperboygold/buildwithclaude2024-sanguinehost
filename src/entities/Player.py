@@ -2,6 +2,8 @@ from ecs.ecs import Entity
 from components.PositionComponent import PositionComponent
 from components.RenderComponent import RenderComponent
 from components.KnowledgeComponent import KnowledgeComponent
+from components.FighterComponent import FighterComponent
+from components.ActorComponent import ActorComponent
 
 class Player(Entity):
     def __init__(self, x, y):
@@ -9,6 +11,9 @@ class Player(Entity):
         self.add_component(PositionComponent(x, y))
         self.add_component(RenderComponent('@', 'Player'))
         self.add_component(KnowledgeComponent())
+        self.add_component(FighterComponent(hp=30, defense=2, power=5))
+        self.add_component(ActorComponent("Player", "player"))
+        self.aggressive = False
 
     @property
     def knowledge(self):
