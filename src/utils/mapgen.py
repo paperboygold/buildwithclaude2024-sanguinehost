@@ -16,10 +16,17 @@ class Tile:
     def __init__(self, tile_type):
         self.tile_type = tile_type
         self.blocked = tile_type in (TileType.WALL, TileType.DOOR)
-        self.block_sight = tile_type == TileType.WALL
+        self.block_sight = tile_type in (TileType.WALL, TileType.DOOR)
         self.explored = False
         self.walkable = tile_type == TileType.FLOOR
         self.is_open = False
+
+    def toggle_door(self):
+        if self.tile_type == TileType.DOOR:
+            self.is_open = not self.is_open
+            self.blocked = not self.is_open
+            self.block_sight = not self.is_open
+            self.walkable = self.is_open
 
 class Room:
     def __init__(self, x, y, width, height):
@@ -204,8 +211,11 @@ class Map:
         self.fov_map = tcod.map.Map(self.width, self.height)
         for y in range(self.height):
             for x in range(self.width):
-                self.fov_map.transparent[y, x] = not self.tiles[y][x].block_sight
-                self.fov_map.walkable[y, x] = self.tiles[y][x].walkable
+                tile = self.tiles[y][x]
+                self.fov_map.transparent[y, x] = not tile.block_sight
+                self.fov_map.walkable[y, x] = tile.walkable
+                if tile.tile_type == TileType.DOOR and not tile.is_open:
+                    self.fov_map.transparent[y, x] = False
 
     def compute_fov(self, x, y, radius, light_walls=True, algorithm=0):
         self.fov_map.compute_fov(x, y, radius, light_walls, algorithm)

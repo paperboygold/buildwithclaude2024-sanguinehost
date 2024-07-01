@@ -104,7 +104,7 @@ class RenderSystem(System):
                     else:
                         char = tile.tile_type.value
                     
-                    if visible or (tile.explored and tile.tile_type != TileType.DOOR):
+                    if visible or tile.explored:
                         self.game_console.print(x + 1, y + 1, char, color)
                     else:
                         self.game_console.print(x + 1, y + 1, ' ', (0, 0, 0))

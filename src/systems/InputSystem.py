@@ -50,10 +50,9 @@ class InputSystem(System):
             if self.game.world.game_map.tiles[y][x].tile_type == TileType.DOOR:
                 tile = self.game.world.game_map.tiles[y][x]
                 if not tile.is_open:
-                    tile.is_open = True
-                    tile.blocked = False
-                    tile.walkable = True
-                    tile.block_sight = False  # Update block_sight
+                    tile.toggle_door()
+                    self.game.world.game_map.initialize_fov()
+                    self.game.fov_recompute = True
                     self.game.message_system.add_message("You open the door.", MessageChannel.SYSTEM)
                     return True
         self.game.message_system.add_message("There is no door to open.", MessageChannel.SYSTEM)
@@ -66,10 +65,9 @@ class InputSystem(System):
             if self.game.world.game_map.tiles[y][x].tile_type == TileType.DOOR:
                 tile = self.game.world.game_map.tiles[y][x]
                 if tile.is_open:
-                    tile.is_open = False
-                    tile.blocked = True
-                    tile.walkable = False
-                    tile.block_sight = True  # Update block_sight
+                    tile.toggle_door()
+                    self.game.world.game_map.initialize_fov()  # Recompute FOV
+                    self.game.fov_recompute = True
                     self.game.message_system.add_message("You close the door.", MessageChannel.SYSTEM)
                     return True
         self.game.message_system.add_message("There is no open door to close.", MessageChannel.SYSTEM)
