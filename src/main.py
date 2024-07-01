@@ -19,33 +19,7 @@ def main():
     setup_logging()
     logger = logging.getLogger(__name__)
     try:
-        game = Game(None)  # Create Game instance with None as world
-        
-
-        
-        map_type = MapType.CAVE
-        
-        world = World(80, 38, game, map_type)  # Pass game and map_type to World
-        game.setup_world(world)  # Set up the world and initialize the render system
-
-        # Find a valid starting position for the player
-        player_x, player_y = world.game_map.get_random_walkable_position()
-        player = Player(player_x, player_y)
-        world.add_entity(player)
-        
-        # Get unique positions for actors
-        actor_positions = get_unique_walkable_positions(world, 2)  # Get 2 unique positions
-
-        # Place actors in unique positions
-        actors = [
-            Actor(actor_positions[0][0], actor_positions[0][1], "Wise Old Man", "wise_old_man"),
-            Actor(actor_positions[1][0], actor_positions[1][1], "Mysterious Stranger", "mysterious_stranger")
-        ]
-        for actor in actors:
-            world.add_entity(actor)
-
-        world.actor_knowledge_system.generate_initial_relationships(world.entities)
-
+        game = Game(None)
         game.run()
     except Exception as e:
         logger.error(f"An error occurred: {str(e)}")

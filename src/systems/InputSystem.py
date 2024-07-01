@@ -41,6 +41,8 @@ class InputSystem(System):
             action_taken = self.handle_close_door()
         elif event.sym == KeySym.q:
             raise SystemExit()
+        elif event.sym == KeySym.s:
+            self.game.save_game()
         return action_taken
 
     def handle_open_door(self):

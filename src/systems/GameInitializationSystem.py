@@ -67,3 +67,4 @@ class GameInitializationSystem:
         self.initialize_message_system()
         self.initialize_camera_and_fov()
         self.initialize_systems()
+        self.initialize_render_system()

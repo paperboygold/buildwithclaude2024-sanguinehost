@@ -12,6 +12,7 @@ class World:
         self.player = None
         self.game = game
         self.actor_knowledge_system = ActorKnowledgeSystem(game)
+        self.map_type = map_type
 
     def add_entity(self, entity):
         if isinstance(entity, Player):
@@ -37,3 +38,10 @@ class World:
                 if actor1 != actor2 and self.game_map.is_in_fov(int(actor1.x), int(actor1.y)) and self.game_map.is_in_fov(int(actor2.x), int(actor2.y)):
                     potential_interactions.append((actor1, actor2))
         return potential_interactions
+
+    def to_picklable(self):
+        picklable_world = World(self.width, self.height, None, self.map_type)
+        picklable_world.game_map = self.game_map
+        picklable_world.entities = [entity for entity in self.entities if not isinstance(entity, Player)]
+        picklable_world.player = self.player
+        return picklable_world
