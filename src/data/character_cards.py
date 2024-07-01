@@ -16,6 +16,15 @@ Background: Lyra's origins are unknown, but she seems to appear wherever intrigu
 Knowledge: Possesses uncanny insight into the hidden workings of the dungeon and its inhabitants.
 Goals: To manipulate events from the shadows and test the worthiness of adventurers.
 Speech Style: Uses poetic language filled with double meanings and veiled warnings.
+""",
+    "aggressive_monster": """
+Name: Grunk the Destroyer
+Appearance: A hulking, red-skinned brute with glowing yellow eyes and sharp claws.
+Personality: Aggressive, single-minded, and always looking for a fight.
+Background: Grunk was created by dark magic to be a relentless hunter and destroyer.
+Knowledge: Limited to basic combat tactics and tracking prey.
+Goals: To destroy any intruders in its territory, especially the player.
+Speech Style: Grunts, roars, and simple, aggressive phrases.
 """
 }
 

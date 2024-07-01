@@ -79,11 +79,12 @@ class Game:
     def add_npcs(self):
         from data.character_cards import get_character_card
         
-        npc_types = ["wise_old_man", "mysterious_stranger"]
+        npc_types = ["wise_old_man", "mysterious_stranger", "aggressive_monster"]
         for npc_type in npc_types:
             x, y = self.world.game_map.get_random_walkable_position()
             name = get_character_card(npc_type).split('\n')[1].split(': ')[1]  # Extract name from character card
-            npc = Actor(x, y, name, npc_type)
+            aggressive = npc_type == "aggressive_monster"
+            npc = Actor(x, y, name, npc_type, aggressive=aggressive)
             self.world.add_entity(npc)
 
         # Generate initial relationships between NPCs

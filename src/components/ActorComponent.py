@@ -7,6 +7,7 @@ class ActorState(Enum):
     PATROL = auto()
     ALERT = auto()
     FLEE = auto()
+    AGGRESSIVE = auto()
 
 class ActorComponent(Component):
     def __init__(self, name: str, character_card_key: str):
