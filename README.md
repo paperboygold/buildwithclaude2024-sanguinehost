@@ -8,16 +8,21 @@ Sanguine Host is an innovative roguelike game that showcases the power of Claude
 
 - **AI-Driven NPCs**: Interact with non-player characters powered by Claude 3.5, capable of engaging in natural, context-aware dialogues.
 - **Dynamic Storytelling**: Experience a unique adventure each time you play, with AI-generated narratives and character responses.
-- **Classic Roguelike Gameplay**: Navigate through a text-based world, encounter challenges, and make decisions that impact your journey.
+- **Classic Roguelike Gameplay**: Navigate through procedurally generated dungeons or caves, encounter challenges, and make decisions that impact your journey.
+- **NPC Interactions**: Observe and participate in conversations between NPCs, with the option to engage or ignore them.
+- **Relationship System**: NPCs have dynamically generated relationships and backstories with each other.
+- **Knowledge System**: Characters accumulate knowledge about the world and other actors as they explore and interact.
 
 ## How It Works
 
-Sanguine Host utilizes the Anthropic API to integrate Claude 3.5 into the game's dialogue system. When players interact with NPCs, the game sends the conversation context to Claude, which then generates appropriate responses based on the character's personality and the game's setting.
+Sanguine Host utilizes the Anthropic API to integrate Claude 3.5 into the game's dialogue and narrative systems. The game is built using an Entity Component System (ECS) architecture for flexibility and performance. When players interact with NPCs or when NPCs interact with each other, the game sends the conversation context to Claude, which then generates appropriate responses based on the characters' personalities, relationships, and the game's setting.
 
 Key components:
 1. **Game Engine**: Built using Python and the tcod library for roguelike functionality.
-2. **AI Integration**: Anthropic's API is used to communicate with Claude 3.5 for NPC dialogues.
+2. **AI Integration**: Anthropic's API is used to communicate with Claude 3.5 for NPC dialogues and narrative generation.
 3. **Dynamic Messaging System**: Handles various types of in-game messages and renders them appropriately.
+4. **Procedural Map Generation**: Creates diverse dungeon and cave environments for each playthrough.
+5. **Actor Knowledge System**: Manages NPC relationships, memories, and accumulated knowledge.
 
 ## Project Structure
 
@@ -31,13 +36,6 @@ Sanguine Host follows an Entity Component System (ECS) architecture:
   - `utils/`: Utility functions and helpers
 - `assets/`: Game assets (tiles, etc.)
 - `data/`: Game data (character cards, etc.)
-
-## Architecture
-
-Sanguine Host uses an Entity Component System (ECS) architecture, which provides:
-- Flexibility in defining game objects
-- Improved performance through data-oriented design
-- Easy extension of game functionality
 
 ## Installation
 
@@ -58,15 +56,18 @@ Sanguine Host uses an Entity Component System (ECS) architecture, which provides
    python src/main.py
    ```
 
-## Development
+## Controls
 
-To contribute to Sanguine Host:
+- Arrow keys: Move the player
+- 'i': Interact with adjacent NPCs or toggle doors
+- '.': Wait a turn
+- 'q': Quit the game
 
-1. Fork the repository
-2. Create a new branch for your feature
-3. Implement your changes, following the existing code style
-4. Write tests for your additions
-5. Submit a pull request with a clear description of your changes
+## Map Generation
+
+Sanguine Host features two types of procedurally generated maps:
+- **Dungeons**: Created using a Binary Space Partitioning (BSP) algorithm, resulting in rooms connected by corridors.
+- **Caves**: Generated using cellular automata, creating more organic, open environments.
 
 ## AI Integration
 
@@ -75,6 +76,7 @@ Sanguine Host leverages Claude 3.5 to create dynamic NPC interactions:
 - Conversations adapt based on game state and player actions
 - AI generates relationship stories between NPCs
 - Dialogue is context-aware and maintains consistency throughout the game
+- NPCs can engage in conversations with each other, which the player can choose to observe or ignore
 
 ## Getting Started
 
