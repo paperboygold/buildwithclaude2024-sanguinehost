@@ -2,6 +2,7 @@ from ecs.ecs import System
 from components.PositionComponent import PositionComponent
 from systems.MessageSystem import MessageChannel
 from entities.Actor import Actor
+from utils.mapgen import TileType
 
 class PlayerSystem(System):
     def __init__(self, game):
@@ -25,7 +26,14 @@ class PlayerSystem(System):
         player_x, player_y = int(player.x), int(player.y)
         self.logger.debug(f"Player attempting to interact at position ({player_x}, {player_y})")
         for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:  # Check adjacent tiles
-            entity = self.game.world.get_entity_at(player_x + dx, player_y + dy)
+            x, y = player_x + dx, player_y + dy
+            tile = self.game.world.game_map.tiles[y][x]
+            if tile.tile_type == TileType.DOOR:
+                tile.toggle_door()
+                action = "open" if tile.is_open else "close"
+                self.game.show_message(f"You {action} the door.", MessageChannel.SYSTEM, (255, 255, 0))
+                return True
+            entity = self.game.world.get_entity_at(x, y)
             if isinstance(entity, Actor):
                 self.game.dialogue_system.start_dialogue(entity)
                 return True

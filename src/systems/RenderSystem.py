@@ -87,25 +87,27 @@ class RenderSystem(System):
                             color = (130, 110, 50)
                         elif tile.tile_type == TileType.FLOOR:
                             color = (200, 180, 50)
-                        else:  # Door
-                            color = (0, 255, 255)
+                        elif tile.tile_type == TileType.DOOR:
+                            color = (0, 255, 255) if tile.is_open else (130, 110, 50)
                     elif tile.explored:
                         if tile.tile_type == TileType.WALL:
                             color = (0, 0, 100)
                         elif tile.tile_type == TileType.FLOOR:
                             color = (50, 50, 150)
-                        else:  # Door
-                            color = (0, 100, 100)
+                        elif tile.tile_type == TileType.DOOR:
+                            color = (0, 100, 100) if tile.is_open else (0, 0, 100)
                     else:
                         color = (0, 0, 0)  # Unexplored and not visible
+                    
                     if tile.tile_type == TileType.DOOR:
-                        if tile.is_open:
-                            char = '/'
-                        else:
-                            char = '+'
+                        char = '/' if tile.is_open else '+'
+                    else:
+                        char = tile.tile_type.value
+                    
+                    if visible or (tile.explored and tile.tile_type != TileType.DOOR):
                         self.game_console.print(x + 1, y + 1, char, color)
                     else:
-                        self.game_console.print(x + 1, y + 1, tile.tile_type.value, color)
+                        self.game_console.print(x + 1, y + 1, ' ', (0, 0, 0))
 
     def render_entities(self):
         for entity in self.world.entities:

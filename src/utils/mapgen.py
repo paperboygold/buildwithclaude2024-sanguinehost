@@ -153,13 +153,13 @@ class Map:
             for x, y, length, dx, dy in sides:
                 for i in range(length):
                     door_x, door_y = x + i * dx, y + i * dy
-                    if self.is_valid_door_position(door_x, door_y) and self.is_on_corridor(door_x, door_y):
+                    if self.is_valid_door_position(door_x, door_y):
                         self.tiles[door_y][door_x] = Tile(TileType.DOOR)
                         doors_added += 1
                         if doors_added >= max_doors_per_room:
                             break
-            if doors_added >= max_doors_per_room:
-                break
+                if doors_added >= max_doors_per_room:
+                    break
 
     def is_valid_door_position(self, x, y):
         if not (0 <= x < self.width and 0 <= y < self.height):
@@ -172,15 +172,25 @@ class Map:
             self.tiles[y][x+1].tile_type if x < self.width - 1 else None
         ]
         
-        return (self.tiles[y][x].tile_type == TileType.WALL and
-                TileType.FLOOR in adjacent_tiles and
-                adjacent_tiles.count(TileType.WALL) >= 2)
-
-    def is_on_corridor(self, x, y):
-        adjacent_floors = sum(1 for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]
-                              if 0 <= x + dx < self.width and 0 <= y + dy < self.height
-                              and self.tiles[y + dy][x + dx].tile_type == TileType.FLOOR)
-        return adjacent_floors >= 2
+        north, south, west, east = adjacent_tiles
+        
+        # Check for horizontal door placement
+        if (north == TileType.WALL and south == TileType.WALL and
+            west == TileType.FLOOR and east == TileType.FLOOR):
+            # Check if there's an opening on either side
+            if (self.tiles[y][x-2].tile_type == TileType.FLOOR or
+                self.tiles[y][x+2].tile_type == TileType.FLOOR):
+                return True
+        
+        # Check for vertical door placement
+        if (west == TileType.WALL and east == TileType.WALL and
+            north == TileType.FLOOR and south == TileType.FLOOR):
+            # Check if there's an opening above or below
+            if (self.tiles[y-2][x].tile_type == TileType.FLOOR or
+                self.tiles[y+2][x].tile_type == TileType.FLOOR):
+                return True
+        
+        return False
 
     def create_h_tunnel(self, x1, x2, y):
         for x in range(min(x1, x2), max(x1, x2) + 1):
@@ -235,7 +245,7 @@ class Map:
         self.create_rooms(root, num_rooms)
         self.connect_rooms(root)
         self.connect_all_rooms()
-        self.add_doors(max_doors_per_room=1)
+        self.add_doors(max_doors_per_room=2)  # Increased to 2 for better chances
         self.initialize_fov()
 
     def generate_cave(self):

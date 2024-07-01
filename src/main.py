@@ -21,13 +21,9 @@ def main():
     try:
         game = Game(None)  # Create Game instance with None as world
         
-        # Ask the user to choose a map type
-        print("Choose a map type:")
-        print("1. BSP Dungeon")
-        print("2. Cave System")
-        choice = input("Enter your choice (1 or 2): ")
+
         
-        map_type = MapType.BSP if choice == "1" else MapType.CAVE
+        map_type = MapType.BSP
         
         world = World(80, 38, game, map_type)  # Pass game and map_type to World
         game.setup_world(world)  # Set up the world and initialize the render system
