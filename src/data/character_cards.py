@@ -7,9 +7,9 @@ character_cards = {
         "knowledge": "Extensive knowledge of the dungeon's history, magical artifacts, and the creatures that inhabit it.",
         "goals": "To guide worthy adventurers and preserve the balance of power within the dungeon.",
         "speech_style": "Uses archaic language and often refers to historical or mythological events.",
-        "health": 20,
-        "defense": 1,
-        "power": 2,
+        "health": 30,
+        "defense": 2,
+        "power": 3,
         "aggression_type": "peaceful",
         "target_preference": ["none"]
     },
@@ -21,7 +21,7 @@ character_cards = {
         "knowledge": "Possesses uncanny insight into the hidden workings of the dungeon and its inhabitants.",
         "goals": "To manipulate events from the shadows and test the worthiness of adventurers.",
         "speech_style": "Uses poetic language filled with double meanings and veiled warnings.",
-        "health": 25,
+        "health": 30,
         "defense": 2,
         "power": 3,
         "aggression_type": "neutral",
@@ -36,8 +36,8 @@ character_cards = {
         "goals": "To destroy any intruders in its territory, especially the player.",
         "speech_style": "Grunts, roars, and simple, aggressive phrases.",
         "health": 30,
-        "defense": 3,
-        "power": 5,
+        "defense": 2,
+        "power": 3,
         "aggression_type": "hostile",
         "target_preference": ["player", "other_actors"]
     }

@@ -1,3 +1,5 @@
+import logging
+
 from ecs.ecs import System
 from components.FighterComponent import FighterComponent
 from systems.MessageSystem import MessageChannel
@@ -7,6 +9,7 @@ from components.ActorComponent import ActorComponent, ActorState
 class CombatSystem(System):
     def __init__(self, game):
         self.game = game
+        self.logger = logging.getLogger(__name__)
 
     def attack(self, attacker, target):
         attacker_fighter = attacker.get_component(FighterComponent)
@@ -16,6 +19,7 @@ class CombatSystem(System):
 
         if damage > 0:
             target_fighter.hp -= damage
+            self.logger.info(f"{attacker.name} attacks {target.name} for {damage} hit points")
             self.game.show_message(
                 f"{attacker.name.capitalize()} attacks {target.name} for {damage} hit points.",
                 MessageChannel.COMBAT
@@ -32,6 +36,7 @@ class CombatSystem(System):
                 self.kill(target)
                 return True  # Return True if the target was killed
         else:
+            self.logger.info(f"{attacker.name} attacks {target.name} but does no damage")
             self.game.show_message(
                 f"{attacker.name.capitalize()} attacks {target.name} but does no damage.",
                 MessageChannel.COMBAT
@@ -45,11 +50,14 @@ class CombatSystem(System):
                    (self.game.world.game_map.is_in_fov(int(attacker.x), int(attacker.y)) or 
                     self.game.world.game_map.is_in_fov(int(target.x), int(target.y))):
                     if entity.aggression_type != "hostile" and target.aggression_type != "hostile":
+                        self.logger.info(f"{entity.name} witnesses attack from {attacker.name} on {target.name}")
                         entity.witness_attack(attacker, target, self.game)
 
     def kill(self, target):
+        self.logger.info(f"{target.name} is defeated")
         self.game.show_message(f"{target.name.capitalize()} is defeated!", MessageChannel.COMBAT)
         if target == self.game.world.player:
+            self.logger.info("Game Over")
             self.game.show_message("Game Over! Press any key to return to the main menu.", MessageChannel.SYSTEM)
             self.game.game_over = True
         else:

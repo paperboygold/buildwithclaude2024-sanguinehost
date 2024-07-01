@@ -11,6 +11,7 @@ import math
 from components.FighterComponent import FighterComponent
 from systems.MessageSystem import MessageChannel
 from entities.Player import Player
+import logging
 
 def get_character_card(character_card_key, default=None):
     return character_cards.get(character_card_key, default)
@@ -34,6 +35,7 @@ class Actor(Entity):
         self.color = (random.randint(100, 255), random.randint(100, 255), random.randint(100, 255))
         self.aggression_type = self.character_card['aggression_type']
         self.target_preference = self.character_card['target_preference']
+        self.logger = logging.getLogger(__name__)
 
     @property
     def x(self):
@@ -86,6 +88,7 @@ class Actor(Entity):
             actor_component.state = ActorState.AGGRESSIVE
             actor_component.aggressive_targets.add(target)
             actor_component.hostile_towards.add(target)
+            self.logger.info(f"{self.name} has become hostile towards {target.name}")
             game.show_message(f"{self.name} becomes hostile towards {target.name}!", MessageChannel.COMBAT)
 
     def reassess_hostility(self, game, target=None):
@@ -231,8 +234,10 @@ class Actor(Entity):
         if attacker not in actor_component.hostile_towards:
             if self.aggression_type == "peaceful":
                 self.become_hostile(attacker, game)
+                self.logger.info(f"{self.name} is outraged by {attacker.name}'s attack on {victim.name}")
                 game.show_message(f"{self.name} is outraged by {attacker.name}'s attack on {victim.name}!", MessageChannel.COMBAT)
             elif self.aggression_type == "neutral":
                 if victim.aggression_type == "peaceful" or random.random() < 0.5:
                     self.become_hostile(attacker, game)
+                    self.logger.info(f"{self.name} decides to intervene against {attacker.name}")
                     game.show_message(f"{self.name} decides to intervene against {attacker.name}!", MessageChannel.COMBAT)

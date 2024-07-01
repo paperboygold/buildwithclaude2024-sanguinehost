@@ -107,6 +107,9 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
                              (self.game.world.game_map.is_in_fov(int(actor1.x), int(actor1.y)) or 
                               self.game.world.game_map.is_in_fov(int(actor2.x), int(actor2.y)))
 
+            self.logger.debug(f"Cooldown check for {actor1.name} and {actor2.name}")
+            self.logger.debug(f"Player can see conversation: {player_can_see}")
+
             if player_can_see:
                 choice = self.get_player_choice(f"{actor1.name} and {actor2.name} are about to have a conversation. Do you want to listen?")
                 if choice:
@@ -241,8 +244,8 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
             current_actor = actor2 if actor1_component.conversation_turns > actor2_component.conversation_turns else actor1
             other_actor = actor1 if current_actor == actor2 else actor2
 
-            self.logger.debug(f"Current speaker: {current_actor.name}, Responding to: {other_actor.name}")
             self.logger.debug(f"Conversation turns - {actor1.name}: {actor1_component.conversation_turns}, {actor2.name}: {actor2_component.conversation_turns}")
+            self.logger.debug(f"Current speaker: {current_actor.name}, Responding to: {other_actor.name}")
 
             # Check the role of the last message and set the next role accordingly
             last_role = conversation[-1]["role"] if conversation else "assistant"
@@ -330,6 +333,9 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
                          (self.game.world.game_map.is_in_fov(int(actor1.x), int(actor1.y)) or 
                           self.game.world.game_map.is_in_fov(int(actor2.x), int(actor2.y)))
         
+        self.logger.info(f"Ending conversation between {actor1.name} and {actor2.name}")
+        self.logger.debug(f"Player can see conversation end: {player_can_see}")
+        
         if player_can_see:
             self.game.show_message(f"{actor1.name} and {actor2.name} have ended their conversation.", MessageChannel.DIALOGUE)
 
@@ -347,6 +353,8 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
                 "system": system_prompt,
                 "temperature": 0.7
             }
+            
+            self.logger.debug(f"Conversation summary API request: {json.dumps(request_body, indent=2)}")
             
             response = self.anthropic_client.messages.create(**request_body)
             summary = response.content[0].text if response.content else ""
@@ -442,6 +450,7 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
     def trigger_aggression(self, aggressor, target):
         if isinstance(target, Actor) and not target.aggressive:
             target.become_aggressive(aggressor)
+            self.logger.info(f"{aggressor.name} triggered aggression in {target.name}")
             self.game.show_message(f"{target.name} becomes aggressive towards {aggressor.name}!", MessageChannel.DIALOGUE)
 
     def attempt_to_calm(self, actor, target):
@@ -449,4 +458,5 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
             # You can implement logic here to determine if the calming attempt is successful
             # For now, let's assume it always works
             target.calm_down()
+            self.logger.info(f"{actor.name} attempted to calm {target.name}")
             self.game.show_message(f"{actor.name} successfully calms down {target.name}.", MessageChannel.DIALOGUE)
