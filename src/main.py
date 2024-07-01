@@ -23,7 +23,7 @@ def main():
         
 
         
-        map_type = MapType.BSP
+        map_type = MapType.CAVE
         
         world = World(80, 38, game, map_type)  # Pass game and map_type to World
         game.setup_world(world)  # Set up the world and initialize the render system

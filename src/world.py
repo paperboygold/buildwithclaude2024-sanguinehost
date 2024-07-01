@@ -4,7 +4,7 @@ from entities.Actor import Actor
 from systems.ActorKnowledgeSystem import ActorKnowledgeSystem
 
 class World:
-    def __init__(self, width, height, game, map_type=MapType.BSP):
+    def __init__(self, width, height, game, map_type=MapType.DUNGEON):
         self.width = width
         self.height = height
         self.game_map = generate_map(width, height, num_rooms=3, map_type=map_type)

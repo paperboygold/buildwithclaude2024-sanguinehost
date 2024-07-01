@@ -4,7 +4,7 @@ import tcod
 from tcod import libtcodpy
 
 class MapType(Enum):
-    BSP = 0
+    DUNGEON = 0
     CAVE = 1
 
 class TileType(Enum):
@@ -51,7 +51,7 @@ class BSPNode:
         self.room = None
 
 class Map:
-    def __init__(self, width, height, map_type=MapType.BSP):
+    def __init__(self, width, height, map_type=MapType.DUNGEON):
         self.width = width
         self.height = height
         self.map_type = map_type
@@ -242,12 +242,12 @@ class Map:
         raise ValueError("Could not find a walkable position after 1000 attempts")
 
     def generate(self, num_rooms=0, min_size=6, max_size=10):
-        if self.map_type == MapType.BSP:
-            self.generate_bsp(num_rooms, min_size, max_size)
+        if self.map_type == MapType.DUNGEON:
+            self.generate_dungeon(num_rooms, min_size, max_size)
         elif self.map_type == MapType.CAVE:
             self.generate_cave()
 
-    def generate_bsp(self, num_rooms, min_size, max_size):
+    def generate_dungeon(self, num_rooms, min_size, max_size):
         self.rooms = []
         root = BSPNode(1, 1, self.width - 2, self.height - 2)
         self.split_node(root, min_size, num_rooms)
@@ -376,7 +376,7 @@ def flood_fill(cave, x, y):
     flood_fill(cave, x, y + 1)
     flood_fill(cave, x, y - 1)
 
-def generate_map(width, height, num_rooms, map_type=MapType.BSP):
+def generate_map(width, height, num_rooms, map_type=MapType.DUNGEON):
     game_map = Map(width, height, map_type)
     game_map.generate(num_rooms)
     return game_map
