@@ -70,7 +70,7 @@ class Game:
         return self.player_system.move_player(dx, dy)
 
     def new_game(self):
-        # Reset the game state for a new game
+        # Create a new world
         self.world = World(80, 38, self, MapType.CAVE)
         self.setup_world(self.world)
         
@@ -124,18 +124,6 @@ class Game:
         else:
             self.new_game()  # Start a new game if no saved game is found
             self.show_message("No saved game found. Starting a new game.", MessageChannel.SYSTEM)
-
-    def run(self):
-        try:
-            while True:
-                self.reset_game_state()
-                self.main_menu_system.handle_main_menu()
-                if not self.game_over:
-                    self.loop_system.run()
-        except Exception as e:
-            self.logger.error(f"Error in game loop: {str(e)}")
-            self.logger.debug(traceback.format_exc())
-            print(f"An error occurred: {str(e)}. Please check the game.log file for details.")
 
     def reset_game_state(self):
         self.game_over = False
@@ -191,3 +179,5 @@ class Game:
         self.game_console = tcod.console.Console(self.width, self.game_area_height)
         self.dialogue_console = tcod.console.Console(self.width, self.dialogue_height)
 
+    def is_game_over(self):
+        return self.game_over
