@@ -4,10 +4,10 @@ from entities.Actor import Actor
 from systems.ActorKnowledgeSystem import ActorKnowledgeSystem
 
 class World:
-    def __init__(self, width, height, game, map_type=MapType.DUNGEON):
+    def __init__(self, width, height, game, map_type=MapType.DUNGEON, single_room=False):
         self.width = width
         self.height = height
-        self.game_map = generate_map(width, height, num_rooms=3, map_type=map_type)
+        self.game_map = generate_map(width, height, num_rooms=3, map_type=map_type, single_room=single_room)
         self.entities = []
         self.player = None
         self.game = game

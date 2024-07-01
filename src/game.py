@@ -69,9 +69,9 @@ class Game:
     def move_player(self, dx, dy):
         return self.player_system.move_player(dx, dy)
 
-    def new_game(self):
+    def new_game(self, single_room=True):
         # Create a new world
-        self.world = World(80, 38, self, MapType.CAVE)
+        self.world = World(80, 38, self, MapType.DUNGEON, single_room=single_room)
         self.setup_world(self.world)
         
         # Create and add the player
@@ -79,7 +79,7 @@ class Game:
         self.world.player = Player(player_x, player_y)
         self.world.add_entity(self.world.player)
         
-        # Add some NPCs
+        # Add NPCs and generate relationships
         self.add_npcs()
         
         self.init_system.initialize_all()
@@ -94,11 +94,12 @@ class Game:
         
         npc_types = ["wise_old_man", "mysterious_stranger", "aggressive_monster"]
         for npc_type in npc_types:
-            x, y = self.world.game_map.get_random_walkable_position()
-            name = get_character_card(npc_type).split('\n')[1].split(': ')[1]  # Extract name from character card
-            aggressive = npc_type == "aggressive_monster"
-            npc = Actor(x, y, name, npc_type, aggressive=aggressive)
-            self.world.add_entity(npc)
+            character_card = get_character_card(npc_type)
+            if character_card:
+                name = character_card["name"]
+                x, y = self.world.game_map.get_random_walkable_position()
+                npc = Actor(x, y, name, npc_type)
+                self.world.add_entity(npc)
 
         # Generate initial relationships between NPCs
         self.world.actor_knowledge_system.generate_initial_relationships(self.world.entities)
@@ -181,3 +182,4 @@ class Game:
 
     def is_game_over(self):
         return self.game_over
+

@@ -9,26 +9,31 @@ import random
 import time
 import math
 from components.FighterComponent import FighterComponent
+from systems.MessageSystem import MessageChannel
+from entities.Player import Player
 
-def get_character_card(character_card_key):
-    return character_cards.get(character_card_key, "")
+def get_character_card(character_card_key, default=None):
+    return character_cards.get(character_card_key, default)
 
 class Actor(Entity):
-    def __init__(self, x, y, name, character_card_key, aggressive=False):
+    def __init__(self, x, y, name, character_card_key):
         super().__init__()
-        character_card = get_character_card(character_card_key)
-        card_lines = character_card.split('\n')
-        hp = next((int(line.split(': ')[1]) for line in card_lines if line.startswith('Health:')), 10)
-        defense = next((int(line.split(': ')[1]) for line in card_lines if line.startswith('Defense:')), 0)
-        power = next((int(line.split(': ')[1]) for line in card_lines if line.startswith('Power:')), 3)
+        self.character_card = get_character_card(character_card_key)
+        if not self.character_card:
+            raise ValueError(f"No character card found for key: {character_card_key}")
         
         self.add_component(PositionComponent(x, y))
         self.add_component(RenderComponent('N', name))
-        self.add_component(ActorComponent(name, character_card_key))
+        self.add_component(ActorComponent(name, self.character_card))
         self.add_component(KnowledgeComponent())
-        self.add_component(FighterComponent(hp, defense, power))
+        self.add_component(FighterComponent(
+            self.character_card['health'],
+            self.character_card['defense'],
+            self.character_card['power']
+        ))
         self.color = (random.randint(100, 255), random.randint(100, 255), random.randint(100, 255))
-        self.aggressive = aggressive or character_card_key == "aggressive_monster"
+        self.aggression_type = self.character_card['aggression_type']
+        self.target_preference = self.character_card['target_preference']
 
     @property
     def x(self):
@@ -74,72 +79,160 @@ class Actor(Entity):
     def knowledge(self):
         return self.get_component(KnowledgeComponent)
 
+    def become_hostile(self, target, game):
+        actor_component = self.get_component(ActorComponent)
+        if target not in actor_component.hostile_towards:
+            actor_component.aggression_type = "hostile"
+            actor_component.state = ActorState.AGGRESSIVE
+            actor_component.aggressive_targets.add(target)
+            actor_component.hostile_towards.add(target)
+            game.show_message(f"{self.name} becomes hostile towards {target.name}!", MessageChannel.COMBAT)
+
+    def reassess_hostility(self, game, target=None):
+        actor_component = self.get_component(ActorComponent)
+        if target:
+            actor_component.aggressive_targets.discard(target)
+        
+        if not actor_component.aggressive_targets:
+            actor_component.aggression_type = self.character_card['aggression_type']
+            actor_component.state = ActorState.IDLE
+            actor_component.target = None
+            game.show_message(f"{self.name} returns to their normal state.", MessageChannel.COMBAT)
+
     def update(self, game_map, player, game):
         actor_component = self.get_component(ActorComponent)
         current_time = time.time()
         if current_time - actor_component.last_move_time < actor_component.move_delay:
             return
 
-        if self.aggressive:
-            actor_component.state = ActorState.AGGRESSIVE
-            dx = player.x - self.x
-            dy = player.y - self.y
-            distance = math.sqrt(dx**2 + dy**2)
-            
-            if distance <= 1:  # If adjacent to the player
-                game.combat_system.attack(self, player)
-            elif distance > 1:  # If not adjacent to the player
-                move_x = int(round(dx / distance))
-                move_y = int(round(dy / distance))
-                new_x = int(self.x + move_x)
-                new_y = int(self.y + move_y)
-                if game_map.is_walkable(new_x, new_y):
-                    self.x = new_x
-                    self.y = new_y
-                    actor_component.last_move_time = current_time
-        elif self.get_component(ActorComponent).state == ActorState.AGGRESSIVE:
-            aggressor = self.get_component(ActorComponent).aggressor
-            if aggressor and aggressor in self.game.world.entities:
-                dx = aggressor.x - self.x
-                dy = aggressor.y - self.y
-                distance = math.sqrt(dx**2 + dy**2)
-                
-                if distance <= 1:  # If adjacent to the aggressor
-                    self.game.combat_system.attack(self, aggressor)
+        if self.aggression_type == "hostile" or actor_component.state == ActorState.AGGRESSIVE:
+            # Check if the aggressive actor has a target
+            self.find_nearest_target_in_sight(game)
+            if actor_component.target:
+                self.update_aggressive_behavior(game_map, player, game, current_time)
+            else:
+                # If no target, use Dijkstra map for movement
+                self.move_using_dijkstra(game_map, game, current_time)
+        else:
+            self.update_non_aggressive_behavior(game_map, current_time, game.world.entities)
+
+    def update_aggressive_behavior(self, game_map, player, game, current_time):
+        actor_component = self.get_component(ActorComponent)
+        
+        # Find the nearest target in line of sight
+        self.find_nearest_target_in_sight(game)
+        
+        if actor_component.target:
+            path = self.find_path_to_target(game_map, actor_component.target)
+            if path and len(path) > 1:
+                next_step = path[1]  # First step is current position
+                if game_map.is_walkable(next_step[0], next_step[1]):
+                    entity_at_next_step = game.world.get_entity_at(next_step[0], next_step[1])
+                    if not entity_at_next_step:
+                        self.x, self.y = next_step
+                        actor_component.last_move_time = current_time
+                        game.logger.debug(f"{self.name} moved to {next_step}")
+                    elif entity_at_next_step == actor_component.target:
+                        if self.is_valid_target(actor_component.target):
+                            game.combat_system.attack(self, actor_component.target)
+                            if actor_component.target:  # Check if target still exists after attack
+                                game.logger.debug(f"{self.name} attacked {actor_component.target.name}")
+                            else:
+                                game.logger.debug(f"{self.name} defeated their target")
+                        else:
+                            actor_component.target = None
+                            game.logger.debug(f"{self.name}'s target is no longer valid")
+                    else:
+                        game.logger.debug(f"{self.name} is blocked by another entity at {next_step}")
                 else:
-                    move_x = int(round(dx / distance))
-                    move_y = int(round(dy / distance))
-                    new_x = int(self.x + move_x)
-                    new_y = int(self.y + move_y)
-                    if game_map.is_walkable(new_x, new_y):
+                    game.logger.debug(f"{self.name} couldn't find a path to the target")
+        else:
+            # If no target in sight, use Dijkstra map for movement
+            self.move_using_dijkstra(game_map, game, current_time)
+
+    def move_using_dijkstra(self, game_map, game, current_time):
+        actor_component = self.get_component(ActorComponent)
+        if not actor_component.dijkstra_map:
+            actor_component.dijkstra_map = DijkstraMap(game_map.width, game_map.height)
+            # Use player position as the goal for the Dijkstra map
+            actor_component.dijkstra_map.compute([(game.world.player.x, game.world.player.y)], game_map.is_walkable)
+        
+        direction = actor_component.dijkstra_map.get_direction(int(self.x), int(self.y))
+        if direction:
+            new_x, new_y = self.x + direction[0], self.y + direction[1]
+            if game_map.is_walkable(int(new_x), int(new_y)) and not game.world.get_entity_at(new_x, new_y):
+                self.x, self.y = new_x, new_y
+                actor_component.last_move_time = current_time
+                game.logger.debug(f"{self.name} moved to ({new_x}, {new_y}) using Dijkstra map")
+            else:
+                game.logger.debug(f"{self.name} couldn't find a direction to move using Dijkstra map")
+        else:
+            game.logger.debug(f"{self.name} couldn't find a direction to move using Dijkstra map")
+
+    def find_nearest_target_in_sight(self, game):
+        actor_component = self.get_component(ActorComponent)
+        
+        potential_targets = [game.world.player] + [
+            entity for entity in game.world.entities 
+            if isinstance(entity, Actor) and entity != self
+        ]
+        
+        visible_targets = [
+            target for target in potential_targets
+            if game.world.game_map.is_in_fov(int(self.x), int(self.y)) and
+            game.world.game_map.is_in_fov(int(target.x), int(target.y))
+        ]
+        
+        if visible_targets:
+            actor_component.target = min(
+                visible_targets, 
+                key=lambda t: ((t.x - self.x)**2 + (t.y - self.y)**2)**0.5
+            )
+        else:
+            actor_component.target = None
+
+    def is_valid_target(self, entity):
+        return (entity is not None and 
+                (isinstance(entity, Actor) or isinstance(entity, Player)) and 
+                entity != self and 
+                not entity.get_component(FighterComponent).is_dead())
+
+    def find_path_to_target(self, game_map, target):
+        return game_map.get_path(int(self.x), int(self.y), int(target.x), int(target.y))
+
+    def update_non_aggressive_behavior(self, game_map, current_time, entities):
+        actor_component = self.get_component(ActorComponent)
+        if actor_component.state == ActorState.IDLE:
+            if random.random() < 0.1:
+                actor_component.state = ActorState.PATROL
+                actor_component.target = game_map.get_random_walkable_position()
+                actor_component.dijkstra_map = DijkstraMap(game_map.width, game_map.height)
+                actor_component.dijkstra_map.compute([actor_component.target], game_map.is_walkable)
+        elif actor_component.state == ActorState.PATROL:
+            if actor_component.target:
+                direction = actor_component.dijkstra_map.get_direction(int(self.x), int(self.y))
+                if direction:
+                    new_x = self.x + direction[0]
+                    new_y = self.y + direction[1]
+                    if game_map.is_walkable(int(new_x), int(new_y)) and not any(entity.x == new_x and entity.y == new_y for entity in entities):
                         self.x = new_x
                         self.y = new_y
                         actor_component.last_move_time = current_time
-            else:
-                # If the aggressor is no longer in the game, return to IDLE state
-                self.get_component(ActorComponent).state = ActorState.IDLE
-                self.get_component(ActorComponent).aggressor = None
-        else:
-            if actor_component.state == ActorState.IDLE:
-                if random.random() < 0.1:
-                    actor_component.state = ActorState.PATROL
-                    actor_component.target = game_map.get_random_walkable_position()
-                    actor_component.dijkstra_map = DijkstraMap(game_map.width, game_map.height)
-                    actor_component.dijkstra_map.compute([actor_component.target], game_map.is_walkable)
-            elif actor_component.state == ActorState.PATROL:
-                if actor_component.target:
-                    direction = actor_component.dijkstra_map.get_direction(int(self.x), int(self.y))
-                    if direction:
-                        new_x = self.x + direction[0]
-                        new_y = self.y + direction[1]
-                        if game_map.is_walkable(int(new_x), int(new_y)):
-                            self.x = new_x
-                            self.y = new_y
-                            actor_component.last_move_time = current_time
 
-                    if (int(self.x), int(self.y)) == actor_component.target:
-                        actor_component.state = ActorState.IDLE
-                        actor_component.target = None
-                        actor_component.dijkstra_map = None
-                else:
+                if (int(self.x), int(self.y)) == actor_component.target:
                     actor_component.state = ActorState.IDLE
+                    actor_component.target = None
+                    actor_component.dijkstra_map = None
+            else:
+                actor_component.state = ActorState.IDLE
+
+    def witness_attack(self, attacker, victim, game):
+        actor_component = self.get_component(ActorComponent)
+        if attacker not in actor_component.hostile_towards:
+            if self.aggression_type == "peaceful":
+                self.become_hostile(attacker, game)
+                game.show_message(f"{self.name} is outraged by {attacker.name}'s attack on {victim.name}!", MessageChannel.COMBAT)
+            elif self.aggression_type == "neutral":
+                if victim.aggression_type == "peaceful" or random.random() < 0.5:
+                    self.become_hostile(attacker, game)
+                    game.show_message(f"{self.name} decides to intervene against {attacker.name}!", MessageChannel.COMBAT)

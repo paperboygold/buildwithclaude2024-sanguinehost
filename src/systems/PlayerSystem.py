@@ -4,6 +4,7 @@ from systems.MessageSystem import MessageChannel
 from entities.Actor import Actor
 from utils.mapgen import TileType
 import tcod
+from components.ActorComponent import ActorComponent
 
 class PlayerSystem(System):
     def __init__(self, game):
@@ -18,7 +19,8 @@ class PlayerSystem(System):
         
         target = self.game.world.get_entity_at(new_x, new_y)
         if isinstance(target, Actor):
-            if target.aggressive:
+            actor_component = target.get_component(ActorComponent)
+            if actor_component.aggression_type == "hostile":
                 self.game.combat_system.attack(player, target)
                 return True
             else:

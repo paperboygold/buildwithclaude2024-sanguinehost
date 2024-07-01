@@ -20,23 +20,32 @@ class CombatSystem(System):
                 f"{attacker.name.capitalize()} attacks {target.name} for {damage} hit points.",
                 MessageChannel.COMBAT
             )
-            if not target.aggressive and isinstance(target, Actor):
-                target.get_component(ActorComponent).state = ActorState.AGGRESSIVE
-                target.get_component(ActorComponent).aggressor = attacker
-                self.game.show_message(f"{target.name} becomes aggressive!", MessageChannel.COMBAT)
+            
+            # Handle target's response
+            if isinstance(target, Actor):
+                target.become_hostile(attacker, self.game)
+            
+            # Handle witnesses
+            self.handle_attack_witnesses(attacker, target)
 
             if target_fighter.hp <= 0:
                 self.kill(target)
-                attacker_component = attacker.get_component(ActorComponent)
-                if attacker_component and attacker_component.aggressor == target:
-                    attacker_component.state = ActorState.IDLE
-                    attacker_component.aggressor = None
-                    self.game.show_message(f"{attacker.name} calms down.", MessageChannel.COMBAT)
+                return True  # Return True if the target was killed
         else:
             self.game.show_message(
                 f"{attacker.name.capitalize()} attacks {target.name} but does no damage.",
                 MessageChannel.COMBAT
             )
+        return False  # Return False if the target survived
+
+    def handle_attack_witnesses(self, attacker, target):
+        for entity in self.game.world.entities:
+            if isinstance(entity, Actor) and entity != attacker and entity != target:
+                if self.game.world.game_map.is_in_fov(int(entity.x), int(entity.y)) and \
+                   (self.game.world.game_map.is_in_fov(int(attacker.x), int(attacker.y)) or 
+                    self.game.world.game_map.is_in_fov(int(target.x), int(target.y))):
+                    if entity.aggression_type != "hostile" and target.aggression_type != "hostile":
+                        entity.witness_attack(attacker, target, self.game)
 
     def kill(self, target):
         self.game.show_message(f"{target.name.capitalize()} is defeated!", MessageChannel.COMBAT)
@@ -45,3 +54,8 @@ class CombatSystem(System):
             self.game.game_over = True
         else:
             self.game.world.entities.remove(target)
+            # Only call calm_down for non-aggressive actors
+            if isinstance(target, Actor) and target.aggression_type != "hostile":
+                for entity in self.game.world.entities:
+                    if isinstance(entity, Actor) and entity.aggression_type == "hostile":
+                        entity.reassess_hostility(self.game, target)

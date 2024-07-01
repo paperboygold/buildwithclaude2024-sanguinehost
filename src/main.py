@@ -1,11 +1,7 @@
 import logging
 import traceback
 from utils.logging import setup_logging
-from world import World
 from game import Game
-from entities.Player import Player
-from entities.Actor import Actor
-from utils.mapgen import MapType
 
 def get_unique_walkable_positions(world, count):
     positions = set()

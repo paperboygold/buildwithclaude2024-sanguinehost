@@ -7,6 +7,7 @@ import traceback
 from systems.MessageSystem import MessageChannel, Message
 from components.ActorComponent import ActorComponent
 from tcod.event import KeySym
+from entities.Actor import Actor
 
 class DialogueSystem:
     def __init__(self, game):
@@ -437,3 +438,15 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
             self.logger.error(f"Error in summarizing full conversation: {str(e)}")
             self.logger.debug(traceback.format_exc())
             return "The conversation ended without a clear summary."
+
+    def trigger_aggression(self, aggressor, target):
+        if isinstance(target, Actor) and not target.aggressive:
+            target.become_aggressive(aggressor)
+            self.game.show_message(f"{target.name} becomes aggressive towards {aggressor.name}!", MessageChannel.DIALOGUE)
+
+    def attempt_to_calm(self, actor, target):
+        if isinstance(target, Actor) and target.aggressive:
+            # You can implement logic here to determine if the calming attempt is successful
+            # For now, let's assume it always works
+            target.calm_down()
+            self.game.show_message(f"{actor.name} successfully calms down {target.name}.", MessageChannel.DIALOGUE)

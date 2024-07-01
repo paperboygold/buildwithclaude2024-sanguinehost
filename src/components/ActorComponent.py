@@ -25,3 +25,6 @@ class ActorComponent(Component):
         self.conversation_partner = None
         self.conversation_turns = 0
         self.aggressor = None
+        self.aggressive_targets = set()
+        self.last_target_evaluation = 0
+        self.hostile_towards = set()

@@ -2,6 +2,7 @@ import random
 from enum import Enum
 import tcod
 from tcod import libtcodpy
+import heapq
 
 class MapType(Enum):
     DUNGEON = 0
@@ -241,8 +242,26 @@ class Map:
             attempts += 1
         raise ValueError("Could not find a walkable position after 1000 attempts")
 
-    def generate(self, num_rooms=0, min_size=6, max_size=10):
-        if self.map_type == MapType.DUNGEON:
+    def create_single_room(self, room_width=None, room_height=None):
+        self.rooms = []
+        
+        # Set default room size if not provided
+        room_width = room_width or min(self.width - 4, 30)
+        room_height = room_height or min(self.height - 4, 20)
+        
+        # Calculate the position to center the room
+        x = (self.width - room_width) // 2
+        y = (self.height - room_height) // 2
+        
+        new_room = Room(x, y, room_width, room_height)
+        self.add_room(new_room)
+        
+        self.initialize_fov()
+
+    def generate(self, num_rooms=0, min_size=6, max_size=10, single_room=False):
+        if single_room:
+            self.create_single_room()
+        elif self.map_type == MapType.DUNGEON:
             self.generate_dungeon(num_rooms, min_size, max_size)
         elif self.map_type == MapType.CAVE:
             self.generate_cave()
@@ -380,12 +399,50 @@ class Map:
                 err += dx
                 y1 += sy
 
+    def get_path(self, start_x, start_y, end_x, end_y):
+        def heuristic(a, b):
+            return abs(b[0] - a[0]) + abs(b[1] - a[1])
+
+        def get_neighbors(x, y):
+            neighbors = []
+            for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < self.width and 0 <= ny < self.height and self.is_walkable(nx, ny):
+                    neighbors.append((nx, ny))
+            return neighbors
+
+        start = (start_x, start_y)
+        end = (end_x, end_y)
+        frontier = [(0, start)]
+        came_from = {start: None}
+        cost_so_far = {start: 0}
+
+        while frontier:
+            current = heapq.heappop(frontier)[1]
+
+            if current == end:
+                path = []
+                while current:
+                    path.append(current)
+                    current = came_from[current]
+                return path[::-1]
+
+            for next in get_neighbors(*current):
+                new_cost = cost_so_far[current] + 1
+                if next not in cost_so_far or new_cost < cost_so_far[next]:
+                    cost_so_far[next] = new_cost
+                    priority = new_cost + heuristic(end, next)
+                    heapq.heappush(frontier, (priority, next))
+                    came_from[next] = current
+
+        return None  # No path found
+
     def __str__(self):
         return '\n'.join(''.join(tile.tile_type.value for tile in row) for row in self.tiles)
 
-def generate_map(width, height, num_rooms, map_type=MapType.DUNGEON):
+def generate_map(width, height, num_rooms, map_type=MapType.DUNGEON, single_room=False):
     game_map = Map(width, height, map_type)
-    game_map.generate(num_rooms)
+    game_map.generate(num_rooms, single_room=single_room)
     return game_map
 
 # Example usage

@@ -6,3 +6,6 @@ class FighterComponent(Component):
         self.hp = hp
         self.defense = defense
         self.power = power
+
+    def is_dead(self):
+        return self.hp <= 0
