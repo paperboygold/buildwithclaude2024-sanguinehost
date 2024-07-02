@@ -14,6 +14,7 @@ class Player(Entity):
         self.add_component(FighterComponent(hp=30, defense=2, power=5))
         self.add_component(ActorComponent("Player", "player"))
         self.aggressive = False
+        self.aggression_type = "neutral"
 
     @property
     def knowledge(self):
@@ -50,3 +51,4 @@ class Player(Entity):
     @name.setter
     def name(self, value):
         self.get_component(RenderComponent).name = value
+

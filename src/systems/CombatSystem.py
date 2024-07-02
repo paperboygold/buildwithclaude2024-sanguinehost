@@ -10,6 +10,7 @@ class CombatSystem(System):
     def __init__(self, game):
         self.game = game
         self.logger = logging.getLogger(__name__)
+        self.aggressors = {}  # Dictionary to keep track of aggressors
 
     def attack(self, attacker, target):
         attacker_fighter = attacker.get_component(FighterComponent)
@@ -25,6 +26,9 @@ class CombatSystem(System):
                 MessageChannel.COMBAT
             )
             
+            # Record the attacker as the aggressor for this target
+            self.aggressors[target] = attacker
+
             # Handle target's response
             if isinstance(target, Actor):
                 target.become_hostile(attacker, self.game)
@@ -53,6 +57,13 @@ class CombatSystem(System):
                         self.logger.info(f"{entity.name} witnesses attack from {attacker.name} on {target.name}")
                         entity.witness_attack(attacker, target, self.game)
 
+    def get_aggressor(self, target):
+        return self.aggressors.get(target)
+
+    def clear_aggressor(self, target):
+        if target in self.aggressors:
+            del self.aggressors[target]
+
     def kill(self, target):
         self.logger.info(f"{target.name} is defeated")
         self.game.show_message(f"{target.name.capitalize()} is defeated!", MessageChannel.COMBAT)
@@ -67,3 +78,4 @@ class CombatSystem(System):
                 for entity in self.game.world.entities:
                     if isinstance(entity, Actor) and entity.aggression_type == "hostile":
                         entity.reassess_hostility(self.game, target)
+        self.clear_aggressor(target)

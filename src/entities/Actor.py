@@ -7,11 +7,12 @@ from utils.dijkstra_map import DijkstraMap
 from data.character_cards import character_cards
 import random
 import time
-import math
 from components.FighterComponent import FighterComponent
 from systems.MessageSystem import MessageChannel
 from entities.Player import Player
 import logging
+import numpy as np
+import tcod
 
 def get_character_card(character_card_key, default=None):
     return character_cards.get(character_card_key, default)
@@ -126,7 +127,13 @@ class Actor(Entity):
         self.find_nearest_target_in_sight(game)
         
         if actor_component.target:
-            path = self.find_path_to_target(game_map, actor_component.target)
+            # Check if the target has an aggressor
+            aggressor = game.combat_system.get_aggressor(actor_component.target)
+            if aggressor and aggressor != self:
+                # If there's an aggressor and it's not this actor, target the aggressor instead
+                actor_component.target = aggressor
+
+            path = self.find_path_to_target_astar(game_map, actor_component.target)
             if path and len(path) > 1:
                 next_step = path[1]  # First step is current position
                 if game_map.is_walkable(next_step[0], next_step[1]):
@@ -134,7 +141,7 @@ class Actor(Entity):
                     if not entity_at_next_step:
                         self.x, self.y = next_step
                         actor_component.last_move_time = current_time
-                        game.logger.debug(f"{self.name} moved to {next_step}")
+                        game.logger.debug(f"{self.name} moved to {next_step} using A*")
                     elif entity_at_next_step == actor_component.target:
                         if self.is_valid_target(actor_component.target):
                             game.combat_system.attack(self, actor_component.target)
@@ -142,15 +149,25 @@ class Actor(Entity):
                                 game.logger.debug(f"{self.name} attacked {actor_component.target.name}")
                             else:
                                 game.logger.debug(f"{self.name} defeated their target")
+                                actor_component.target = None
                         else:
                             actor_component.target = None
                             game.logger.debug(f"{self.name}'s target is no longer valid")
                     else:
                         game.logger.debug(f"{self.name} is blocked by another entity at {next_step}")
-                else:
-                    game.logger.debug(f"{self.name} couldn't find a path to the target")
+            elif path and len(path) == 1:  # Actor is adjacent to the target
+                if self.is_valid_target(actor_component.target):
+                    game.combat_system.attack(self, actor_component.target)
+                    if actor_component.target:  # Check if target still exists after attack
+                        game.logger.debug(f"{self.name} attacked adjacent {actor_component.target.name}")
+                    else:
+                        game.logger.debug(f"{self.name} defeated their adjacent target")
+                        actor_component.target = None
+            else:
+                game.logger.debug(f"{self.name} couldn't find a path to the target")
+                actor_component.target = None  # Clear the target if no path is found
         else:
-            # If no target in sight, use Dijkstra map for movement
+            # If no target, use Dijkstra map for movement
             self.move_using_dijkstra(game_map, game, current_time)
 
     def move_using_dijkstra(self, game_map, game, current_time):
@@ -200,8 +217,28 @@ class Actor(Entity):
                 entity != self and 
                 not entity.get_component(FighterComponent).is_dead())
 
-    def find_path_to_target(self, game_map, target):
-        return game_map.get_path(int(self.x), int(self.y), int(target.x), int(target.y))
+    def find_path_to_target_astar(self, game_map, target):
+        # Create a cost array where 1 is walkable and 0 is blocked
+        cost = np.ones((game_map.height, game_map.width), dtype=np.int8)
+        for y in range(game_map.height):
+            for x in range(game_map.width):
+                if not game_map.is_walkable(x, y):
+                    cost[y, x] = 0
+
+        # Create a graph from the cost array
+        graph = tcod.path.SimpleGraph(cost=cost, cardinal=2, diagonal=3)
+
+        # Create a pathfinder
+        pathfinder = tcod.path.Pathfinder(graph)
+
+        # Set the start position
+        pathfinder.add_root((int(self.y), int(self.x)))
+
+        # Compute the path to the target
+        path = pathfinder.path_to((int(target.y), int(target.x))).tolist()
+
+        # Convert the path from (y, x) to (x, y) format
+        return [(x, y) for y, x in path]
 
     def update_non_aggressive_behavior(self, game_map, current_time, entities):
         actor_component = self.get_component(ActorComponent)
@@ -241,3 +278,6 @@ class Actor(Entity):
                     self.become_hostile(attacker, game)
                     self.logger.info(f"{self.name} decides to intervene against {attacker.name}")
                     game.show_message(f"{self.name} decides to intervene against {attacker.name}!", MessageChannel.COMBAT)
+                
+            # Set the attacker as the target for this actor
+            actor_component.target = attacker
