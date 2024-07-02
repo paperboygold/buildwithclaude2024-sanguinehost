@@ -87,10 +87,17 @@ class Actor(Entity):
         if target not in actor_component.hostile_towards:
             actor_component.aggression_type = "hostile"
             actor_component.state = ActorState.AGGRESSIVE
-            actor_component.aggressive_targets.add(target)
             actor_component.hostile_towards.add(target)
-            self.logger.info(f"{self.name} has become hostile towards {target.name}")
-            game.show_message(f"{self.name} becomes hostile towards {target.name}!", MessageChannel.COMBAT)
+            game.logger.debug(f"{self.name} has become hostile towards {target.name}")
+
+    def witness_attack(self, attacker, victim, game):
+        if attacker not in self.get_component(ActorComponent).hostile_towards:
+            if self.aggression_type == "peaceful":
+                self.become_hostile(attacker, game)
+                game.logger.info(f"{self.name} is outraged by {attacker.name}'s attack on {victim.name}")
+            elif self.aggression_type == "neutral" and (victim.aggression_type == "peaceful" or random.random() < 0.5):
+                self.become_hostile(attacker, game)
+                game.logger.info(f"{self.name} decides to intervene against {attacker.name}")
 
     def reassess_hostility(self, game, target=None):
         actor_component = self.get_component(ActorComponent)
@@ -265,19 +272,3 @@ class Actor(Entity):
                     actor_component.dijkstra_map = None
             else:
                 actor_component.state = ActorState.IDLE
-
-    def witness_attack(self, attacker, victim, game):
-        actor_component = self.get_component(ActorComponent)
-        if attacker not in actor_component.hostile_towards:
-            if self.aggression_type == "peaceful":
-                self.become_hostile(attacker, game)
-                self.logger.info(f"{self.name} is outraged by {attacker.name}'s attack on {victim.name}")
-                game.show_message(f"{self.name} is outraged by {attacker.name}'s attack on {victim.name}!", MessageChannel.COMBAT)
-            elif self.aggression_type == "neutral":
-                if victim.aggression_type == "peaceful" or random.random() < 0.5:
-                    self.become_hostile(attacker, game)
-                    self.logger.info(f"{self.name} decides to intervene against {attacker.name}")
-                    game.show_message(f"{self.name} decides to intervene against {attacker.name}!", MessageChannel.COMBAT)
-                
-            # Set the attacker as the target for this actor
-            actor_component.target = attacker
