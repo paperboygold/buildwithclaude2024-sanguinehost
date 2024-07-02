@@ -43,6 +43,11 @@ class InputSystem(System):
             raise SystemExit()
         elif event.sym == KeySym.s:
             self.game.save_game()
+        elif event.sym == KeySym.d and (event.mod & tcod.event.KMOD_CTRL):
+            self.game.disable_actor_dialogue = not self.game.disable_actor_dialogue
+            status = "disabled" if self.game.disable_actor_dialogue else "enabled"
+            self.game.message_system.add_message(f"Actor-to-actor dialogue {status}", MessageChannel.SYSTEM)
+            action_taken = True
         return action_taken
 
     def handle_open_door(self):

@@ -44,10 +44,12 @@ class GameLoopSystem:
         self.game.logger.debug("Checking for potential actor interactions")
         potential_interactions = self.game.world.get_potential_actor_interactions()
         for actor1, actor2 in potential_interactions:
-            if not actor1.get_component(ActorComponent).current_conversation and random.random() < 0.05:
-                self.game.dialogue_system.start_actor_dialogue(actor1, actor2)
+            if not self.game.disable_actor_dialogue:  # Add this condition
+                if not actor1.get_component(ActorComponent).current_conversation and random.random() < 0.05:
+                    self.game.dialogue_system.start_actor_dialogue(actor1, actor2)
         
         for actor1, actor2 in potential_interactions:
-            if actor1.get_component(ActorComponent).current_conversation and actor1.get_component(ActorComponent).conversation_turns < 3:
-                self.game.dialogue_system.continue_actor_dialogue(actor1, actor2)
-                break
+            if not self.game.disable_actor_dialogue:  # Add this condition
+                if actor1.get_component(ActorComponent).current_conversation and actor1.get_component(ActorComponent).conversation_turns < 3:
+                    self.game.dialogue_system.continue_actor_dialogue(actor1, actor2)
+                    break

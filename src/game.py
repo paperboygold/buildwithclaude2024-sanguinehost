@@ -39,6 +39,7 @@ class Game:
             self.main_menu_system = MainMenuSystem(self)
             self.combat_system = CombatSystem(self)
             self.game_over = False
+            self.disable_actor_dialogue = False  # Add this line
 
         except Exception as e:
             self.logger.error(f"Error initializing game: {str(e)}")
