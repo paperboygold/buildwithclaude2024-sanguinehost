@@ -78,10 +78,12 @@ class CombatSystem(System):
     def witness_decides_to_intervene(self, witness, attacker, target, help_target):
         if help_target:
             witness.become_hostile(attacker, self.game)
+            witness.get_component(ActorComponent).target = attacker  # Set the target explicitly
             self.game.logger.info(f"{witness.name} decides to intervene against {attacker.name}")
             self.game.show_message(f"{witness.name} decides to intervene against {attacker.name}", MessageChannel.COMBAT)
         else:
             witness.become_hostile(target, self.game)
+            witness.get_component(ActorComponent).target = target  # Set the target explicitly
             self.game.logger.info(f"{witness.name} decides to help {attacker.name} against {target.name}")
             self.game.show_message(f"{witness.name} decides to help {attacker.name} against {target.name}", MessageChannel.COMBAT)
         self.combat_participants.add(witness)
@@ -119,4 +121,10 @@ class CombatSystem(System):
         if len(self.combat_participants) <= 1:
             self.game.logger.info("Combat has ended")
             self.game.show_message("The fighting has stopped.", MessageChannel.COMBAT)
+            self.reset_hostility()
             self.combat_participants.clear()
+
+    def reset_hostility(self):
+        for entity in self.combat_participants:
+            if isinstance(entity, Actor):
+                entity.reset_hostility(self.game)

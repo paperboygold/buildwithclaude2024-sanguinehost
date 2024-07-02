@@ -110,6 +110,13 @@ class Actor(Entity):
             actor_component.target = None
             game.show_message(f"{self.name} returns to their normal state.", MessageChannel.COMBAT)
 
+    def reset_hostility(self, game):
+        actor_component = self.get_component(ActorComponent)
+        actor_component.hostile_towards.clear()
+        actor_component.state = ActorState.IDLE
+        actor_component.target = None
+        game.logger.info(f"{self.name} has reset their hostility")
+
     def update(self, game_map, player, game):
         actor_component = self.get_component(ActorComponent)
         current_time = time.time()
@@ -130,49 +137,46 @@ class Actor(Entity):
     def update_aggressive_behavior(self, game_map, player, game, current_time):
         actor_component = self.get_component(ActorComponent)
         
-        # Find the nearest target in line of sight
-        self.find_nearest_target_in_sight(game)
+        # Find a target if we don't have one or if it's no longer valid
+        if not actor_component.target or not self.is_valid_target(actor_component.target):
+            self.find_nearest_target_in_sight(game)
         
         if actor_component.target:
-            # Check if the target has an aggressor
-            aggressor = game.combat_system.get_aggressor(actor_component.target)
-            if aggressor and aggressor != self:
-                # If there's an aggressor and it's not this actor, target the aggressor instead
-                actor_component.target = aggressor
+            # For non-hostile actors, check if the target is in the hostile_towards set
+            if self.aggression_type != "hostile" and actor_component.target not in actor_component.hostile_towards:
+                new_target = self.find_nearest_hostile_target(game)
+                if new_target:
+                    actor_component.target = new_target
+                else:
+                    self.update_non_aggressive_behavior(game_map, current_time, game.world.entities)
+                    return
 
-            path = self.find_path_to_target_astar(game_map, actor_component.target)
-            if path and len(path) > 1:
-                next_step = path[1]  # First step is current position
-                if game_map.is_walkable(next_step[0], next_step[1]):
-                    entity_at_next_step = game.world.get_entity_at(next_step[0], next_step[1])
-                    if not entity_at_next_step:
-                        self.x, self.y = next_step
-                        actor_component.last_move_time = current_time
-                        game.logger.debug(f"{self.name} moved to {next_step} using A*")
-                    elif entity_at_next_step == actor_component.target:
-                        if self.is_valid_target(actor_component.target):
-                            game.combat_system.attack(self, actor_component.target)
-                            if actor_component.target:  # Check if target still exists after attack
-                                game.logger.debug(f"{self.name} attacked {actor_component.target.name}")
-                            else:
-                                game.logger.debug(f"{self.name} defeated their target")
-                                actor_component.target = None
+            # Check if the target is adjacent (including diagonals)
+            dx = actor_component.target.x - self.x
+            dy = actor_component.target.y - self.y
+            is_adjacent = abs(dx) <= 1 and abs(dy) <= 1
+
+            if is_adjacent:  # If adjacent (including diagonals), attack
+                game.combat_system.attack(self, actor_component.target)
+                actor_component.last_move_time = current_time
+                game.logger.debug(f"{self.name} attacked adjacent {actor_component.target.name}")
+            else:  # If not adjacent, move towards the target
+                path = self.find_path_to_target_astar(game_map, actor_component.target)
+                if path and len(path) > 1:
+                    next_step = path[1]  # First step is current position
+                    if game_map.is_walkable(next_step[0], next_step[1]):
+                        entity_at_next_step = game.world.get_entity_at(next_step[0], next_step[1])
+                        if not entity_at_next_step:
+                            self.x, self.y = next_step
+                            actor_component.last_move_time = current_time
+                            game.logger.debug(f"{self.name} moved to {next_step} using A*")
                         else:
-                            actor_component.target = None
-                            game.logger.debug(f"{self.name}'s target is no longer valid")
+                            game.logger.debug(f"{self.name} is blocked by another entity at {next_step}")
                     else:
-                        game.logger.debug(f"{self.name} is blocked by another entity at {next_step}")
-            elif path and len(path) == 1:  # Actor is adjacent to the target
-                if self.is_valid_target(actor_component.target):
-                    game.combat_system.attack(self, actor_component.target)
-                    if actor_component.target:  # Check if target still exists after attack
-                        game.logger.debug(f"{self.name} attacked adjacent {actor_component.target.name}")
-                    else:
-                        game.logger.debug(f"{self.name} defeated their adjacent target")
-                        actor_component.target = None
-            else:
-                game.logger.debug(f"{self.name} couldn't find a path to the target")
-                actor_component.target = None  # Clear the target if no path is found
+                        game.logger.debug(f"{self.name} couldn't find a path to the target")
+                else:
+                    game.logger.debug(f"{self.name} couldn't find a path to the target")
+                    actor_component.target = None  # Clear the target if no path is found
         else:
             # If no target, use Dijkstra map for movement
             self.move_using_dijkstra(game_map, game, current_time)
@@ -272,3 +276,19 @@ class Actor(Entity):
                     actor_component.dijkstra_map = None
             else:
                 actor_component.state = ActorState.IDLE
+
+    def find_nearest_hostile_target(self, game):
+        actor_component = self.get_component(ActorComponent)
+        hostile_targets = [
+            entity for entity in game.world.entities 
+            if entity in actor_component.hostile_towards and
+            game.world.game_map.is_in_fov(int(self.x), int(self.y)) and
+            game.world.game_map.is_in_fov(int(entity.x), int(entity.y))
+        ]
+        
+        if hostile_targets:
+            return min(
+                hostile_targets, 
+                key=lambda t: ((t.x - self.x)**2 + (t.y - self.y)**2)**0.5
+            )
+        return None
