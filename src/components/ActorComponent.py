@@ -10,9 +10,33 @@ class ActorState(Enum):
     AGGRESSIVE = auto()
 
 class ActorComponent(Component):
-    def __init__(self, name: str, character_card_key: str):
+    def __init__(self, name, appearance, personality, background, knowledge, goals, speech_style, health, defense, power, aggression_type, target_preference):
         self.name = name
-        self.character_card = get_character_card(character_card_key, "")
+        self.appearance = appearance
+        self.personality = personality
+        self.background = background
+        self.knowledge = knowledge
+        self.goals = goals
+        self.speech_style = speech_style
+        self.health = health
+        self.defense = defense
+        self.power = power
+        self.aggression_type = aggression_type
+        self.target_preference = target_preference
+        self.character_card = {
+            'name': name,
+            'appearance': appearance,
+            'personality': personality,
+            'background': background,
+            'knowledge': knowledge,
+            'goals': goals,
+            'speech_style': speech_style,
+            'health': health,
+            'defense': defense,
+            'power': power,
+            'aggression_type': aggression_type,
+            'target_preference': target_preference
+        }
         self.state = ActorState.IDLE
         self.target = None
         self.dijkstra_map = None

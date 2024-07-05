@@ -3,14 +3,6 @@ import traceback
 from utils.logging import setup_logging
 from game import Game
 
-def get_unique_walkable_positions(world, count):
-    positions = set()
-    while len(positions) < count:
-        x, y = world.game_map.get_random_walkable_position()
-        if (x, y) not in positions:
-            positions.add((x, y))
-    return list(positions)
-
 def main():
     setup_logging()
     logger = logging.getLogger(__name__)

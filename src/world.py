@@ -2,6 +2,7 @@ from utils.mapgen import generate_map, MapType
 from entities.Player import Player
 from entities.Actor import Actor
 from systems.ActorKnowledgeSystem import ActorKnowledgeSystem
+from components.ActorComponent import ActorComponent
 
 class World:
     def __init__(self, width, height, game, map_type=MapType.DUNGEON, single_room=False):
@@ -45,3 +46,10 @@ class World:
         picklable_world.entities = [entity for entity in self.entities if not isinstance(entity, Player)]
         picklable_world.player = self.player
         return picklable_world
+
+    def create_actor(self, name, x, y, appearance, personality, background, knowledge, goals, speech_style, health, defense, power, aggression_type, target_preference):
+        actor = Actor(name, x, y)
+        actor_component = ActorComponent(name, appearance, personality, background, knowledge, goals, speech_style, health, defense, power, aggression_type, target_preference)
+        actor.add_component(actor_component)
+        self.entities.append(actor)
+        return actor

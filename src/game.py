@@ -17,7 +17,7 @@ from systems.CombatSystem import CombatSystem
 from systems.PlayerSystem import PlayerSystem
 from systems.DialogueSystem import DialogueSystem
 from systems.InputSystem import InputSystem
-
+from data.character_cards import get_character_card
 
 class Game:
     def __init__(self, world):
@@ -90,17 +90,24 @@ class Game:
         self.show_message("Welcome to Sanguine Host!", MessageChannel.SYSTEM)
         self.game_over = False
 
+    @staticmethod
+    def get_unique_walkable_positions(world, count):
+        positions = set()
+        while len(positions) < count:
+            x, y = world.game_map.get_random_walkable_position()
+            if (x, y) not in positions:
+                positions.add((x, y))
+        return list(positions)
+
     def add_npcs(self):
-        from data.character_cards import get_character_card
-        
-        npc_types = ["wise_old_man", "mysterious_stranger", "aggressive_monster"]
-        for npc_type in npc_types:
+        npc_types = ['wise_old_man', 'mysterious_stranger', 'aggressive_monster']
+        positions = self.get_unique_walkable_positions(self.world, len(npc_types))
+        for i, npc_type in enumerate(npc_types):
+            x, y = positions[i]
             character_card = get_character_card(npc_type)
-            if character_card:
-                name = character_card["name"]
-                x, y = self.world.game_map.get_random_walkable_position()
-                npc = Actor(x, y, name, npc_type)
-                self.world.add_entity(npc)
+            name = character_card['name']
+            npc = Actor(x, y, name, npc_type)
+            self.world.entities.append(npc)
 
         # Generate initial relationships between NPCs
         self.world.actor_knowledge_system.generate_initial_relationships(self.world.entities)

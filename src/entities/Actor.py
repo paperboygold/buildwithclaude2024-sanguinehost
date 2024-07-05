@@ -26,7 +26,20 @@ class Actor(Entity):
         
         self.add_component(PositionComponent(x, y))
         self.add_component(RenderComponent('N', name))
-        self.add_component(ActorComponent(name, self.character_card))
+        self.add_component(ActorComponent(
+            name=name,
+            appearance=self.character_card['appearance'],
+            personality=self.character_card['personality'],
+            background=self.character_card['background'],
+            knowledge=self.character_card['knowledge'],
+            goals=self.character_card['goals'],
+            speech_style=self.character_card['speech_style'],
+            health=self.character_card['health'],
+            defense=self.character_card['defense'],
+            power=self.character_card['power'],
+            aggression_type=self.character_card['aggression_type'],
+            target_preference=self.character_card['target_preference']
+        ))
         self.add_component(KnowledgeComponent())
         self.add_component(FighterComponent(
             self.character_card['health'],

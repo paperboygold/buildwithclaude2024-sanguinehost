@@ -20,17 +20,22 @@ class PlayerSystem(System):
         target = self.game.world.get_entity_at(new_x, new_y)
         if isinstance(target, Actor):
             actor_component = target.get_component(ActorComponent)
-            if actor_component.aggression_type == "hostile":
-                self.game.combat_system.attack(player, target)
-                return True
-            else:
-                confirm = self.confirm_attack(target)
-                if confirm:
+            if hasattr(actor_component, 'aggression_type'):
+                if actor_component.aggression_type == "hostile":
                     self.game.combat_system.attack(player, target)
                     return True
                 else:
-                    self.game.dialogue_system.start_dialogue(target)
-                    return True
+                    confirm = self.confirm_attack(target)
+                    if confirm:
+                        self.game.combat_system.attack(player, target)
+                        return True
+                    else:
+                        self.game.dialogue_system.start_dialogue(target)
+                        return True
+            else:
+                self.logger.warning(f"Actor {target.name} does not have an aggression_type attribute")
+                self.game.dialogue_system.start_dialogue(target)
+                return True
         elif self.game.world.game_map.is_walkable(new_x, new_y):
             player.get_component(PositionComponent).x = new_x
             player.get_component(PositionComponent).y = new_y

@@ -12,7 +12,20 @@ class Player(Entity):
         self.add_component(RenderComponent('@', 'Player'))
         self.add_component(KnowledgeComponent())
         self.add_component(FighterComponent(hp=30, defense=2, power=5))
-        self.add_component(ActorComponent("Player", "player"))
+        self.add_component(ActorComponent(
+            name="Player",
+            appearance="A brave adventurer",
+            personality="Determined and curious",
+            background="An explorer seeking fortune and glory",
+            knowledge="Basic knowledge of dungeon exploration",
+            goals="To explore the dungeon and uncover its secrets",
+            speech_style="Direct and confident",
+            health=30,
+            defense=2,
+            power=5,
+            aggression_type="neutral",
+            target_preference=["hostile"]
+        ))
         self.aggressive = False
         self.aggression_type = "neutral"
 
@@ -51,4 +64,3 @@ class Player(Entity):
     @name.setter
     def name(self, value):
         self.get_component(RenderComponent).name = value
-
