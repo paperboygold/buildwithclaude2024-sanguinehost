@@ -9,7 +9,7 @@ character_cards = {
         "speech_style": "Uses archaic language and often refers to historical or mythological events.",
         "health": 30,
         "defense": 2,
-        "power": 3,
+        "power": 5,
         "aggression_type": "peaceful",
         "target_preference": ["none"]
     },
@@ -23,7 +23,7 @@ character_cards = {
         "speech_style": "Uses poetic language filled with double meanings and veiled warnings.",
         "health": 30,
         "defense": 2,
-        "power": 3,
+        "power": 5,
         "aggression_type": "neutral",
         "target_preference": ["threats"]
     },
@@ -37,7 +37,7 @@ character_cards = {
         "speech_style": "Grunts, roars, and simple, aggressive phrases.",
         "health": 30,
         "defense": 2,
-        "power": 3,
+        "power": 5,
         "aggression_type": "hostile",
         "target_preference": ["player", "other_actors"]
     }

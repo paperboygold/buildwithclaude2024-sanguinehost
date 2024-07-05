@@ -105,6 +105,7 @@ class CombatSystem(System):
         else:
             self.logger.info(f"Removing defeated entity: {target.name}")
             self.game.world.entities.remove(target)
+            self.clear_defeated_entity_as_target(target)  # Add this line
             # Only call calm_down for non-aggressive actors
             if isinstance(target, Actor) and target.aggression_type != "hostile":
                 self.logger.info(f"Reassessing hostility for other actors due to defeat of {target.name}")
@@ -115,6 +116,22 @@ class CombatSystem(System):
         self.clear_aggressor(target)
         self.logger.debug(f"Aggressor cleared for defeated entity: {target.name}")
         self.end_combat(target)
+        # Reset state for all entities that were targeting the defeated entity
+        for entity in self.game.world.entities:
+            if isinstance(entity, Actor):
+                actor_component = entity.get_component(ActorComponent)
+                if actor_component.target == target:
+                    actor_component.target = None
+                    actor_component.state = ActorState.IDLE
+                    self.logger.info(f"{entity.name} lost its target and returned to IDLE state")
+
+    def clear_defeated_entity_as_target(self, defeated_entity):
+        for entity in self.game.world.entities:
+            if isinstance(entity, Actor):
+                actor_component = entity.get_component(ActorComponent)
+                if actor_component.target == defeated_entity:
+                    actor_component.target = None
+                    self.game.logger.debug(f"{entity.name} cleared their target as it was defeated")
 
     def end_combat(self, defeated_entity):
         self.combat_participants.remove(defeated_entity)
@@ -123,8 +140,20 @@ class CombatSystem(System):
             self.game.show_message("The fighting has stopped.", MessageChannel.COMBAT)
             self.reset_hostility()
             self.combat_participants.clear()
+            # Reset state for all remaining participants, except hostile actors
+            for entity in self.combat_participants:
+                if isinstance(entity, Actor):
+                    actor_component = entity.get_component(ActorComponent)
+                    if entity.aggression_type != "hostile":
+                        actor_component.state = ActorState.IDLE
+                    actor_component.target = None
 
     def reset_hostility(self):
         for entity in self.combat_participants:
             if isinstance(entity, Actor):
-                entity.reset_hostility(self.game)
+                actor_component = entity.get_component(ActorComponent)
+                if entity.aggression_type != "hostile":
+                    actor_component.hostile_towards.clear()
+                    actor_component.state = ActorState.IDLE
+                actor_component.target = None
+                self.game.logger.info(f"{entity.name} has reset their hostility and returned to {'IDLE' if entity.aggression_type != 'hostile' else 'AGGRESSIVE'} state")

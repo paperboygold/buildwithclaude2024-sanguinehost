@@ -136,14 +136,14 @@ class Actor(Entity):
         if current_time - actor_component.last_move_time < actor_component.move_delay:
             return
 
-        if self.aggression_type == "hostile" or actor_component.state == ActorState.AGGRESSIVE:
-            # Check if the aggressive actor has a target
-            self.find_nearest_target_in_sight(game)
-            if actor_component.target:
-                self.update_aggressive_behavior(game_map, player, game, current_time)
+        if self.aggression_type == "hostile":
+            self.update_aggressive_behavior(game_map, player, game, current_time)
+        elif actor_component.state == ActorState.AGGRESSIVE:
+            if not actor_component.target or not self.is_valid_target(actor_component.target):
+                actor_component.state = ActorState.IDLE
+                game.logger.info(f"{self.name} returned to IDLE state")
             else:
-                # If no target, use Dijkstra map for movement
-                self.move_using_dijkstra(game_map, game, current_time)
+                self.update_aggressive_behavior(game_map, player, game, current_time)
         else:
             self.update_non_aggressive_behavior(game_map, current_time, game.world.entities)
 
@@ -170,9 +170,13 @@ class Actor(Entity):
             is_adjacent = abs(dx) <= 1 and abs(dy) <= 1
 
             if is_adjacent:  # If adjacent (including diagonals), attack
-                game.combat_system.attack(self, actor_component.target)
+                target = actor_component.target
+                game.combat_system.attack(self, target)
                 actor_component.last_move_time = current_time
-                game.logger.debug(f"{self.name} attacked adjacent {actor_component.target.name}")
+                if target:  # Add this check
+                    game.logger.debug(f"{self.name} attacked adjacent {target.name}")
+                else:
+                    game.logger.debug(f"{self.name} attempted to attack, but the target is no longer valid")
             else:  # If not adjacent, move towards the target
                 path = self.find_path_to_target_astar(game_map, actor_component.target)
                 if path and len(path) > 1:
@@ -193,6 +197,12 @@ class Actor(Entity):
         else:
             # If no target, use Dijkstra map for movement
             self.move_using_dijkstra(game_map, game, current_time)
+
+    def is_valid_target(self, entity):
+        return (entity is not None and 
+                (isinstance(entity, Actor) or isinstance(entity, Player)) and 
+                entity != self and 
+                not entity.get_component(FighterComponent).is_dead())
 
     def move_using_dijkstra(self, game_map, game, current_time):
         actor_component = self.get_component(ActorComponent)
@@ -224,7 +234,8 @@ class Actor(Entity):
         visible_targets = [
             target for target in potential_targets
             if game.world.game_map.is_in_fov(int(self.x), int(self.y)) and
-            game.world.game_map.is_in_fov(int(target.x), int(target.y))
+            game.world.game_map.is_in_fov(int(target.x), int(target.y)) and
+            self.is_valid_target(target)
         ]
         
         if visible_targets:
