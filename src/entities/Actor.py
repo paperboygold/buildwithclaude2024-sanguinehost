@@ -37,7 +37,7 @@ class Actor(Entity):
             health=self.character_card['health'],
             defense=self.character_card['defense'],
             power=self.character_card['power'],
-            aggression_type=self.character_card['aggression_type'],
+            aggression_type=self.character_card['aggression_type']['type'],
             target_preference=self.character_card['target_preference']
         ))
         self.add_component(KnowledgeComponent())
@@ -47,8 +47,9 @@ class Actor(Entity):
             self.character_card['power']
         ))
         self.color = (random.randint(100, 255), random.randint(100, 255), random.randint(100, 255))
-        self.aggression_type = self.character_card['aggression_type']
+        self.aggression_type = self.character_card['aggression_type']['type']
         self.target_preference = self.character_card['target_preference']
+        self.faction = self.character_card['faction']
         self.logger = logging.getLogger(__name__)
 
     @property
@@ -118,7 +119,7 @@ class Actor(Entity):
             actor_component.aggressive_targets.discard(target)
         
         if not actor_component.aggressive_targets:
-            actor_component.aggression_type = self.character_card['aggression_type']
+            actor_component.aggression_type = self.character_card['aggression_type']['type']
             actor_component.state = ActorState.IDLE
             actor_component.target = None
             game.show_message(f"{self.name} returns to their normal state.", MessageChannel.COMBAT)
@@ -150,13 +151,14 @@ class Actor(Entity):
     def update_aggressive_behavior(self, game_map, player, game, current_time):
         actor_component = self.get_component(ActorComponent)
         
-        # Find a target if we don't have one or if it's no longer valid
-        if not actor_component.target or not self.is_valid_target(actor_component.target):
-            self.find_nearest_target_in_sight(game)
+        # If the actor is hostile, always look for a target
+        if self.aggression_type == "hostile":
+            if not actor_component.target or not self.is_valid_target(actor_component.target):
+                self.find_nearest_target_in_sight(game)
         
-        if actor_component.target:
-            # For non-hostile actors, check if the target is in the hostile_towards set
-            if self.aggression_type != "hostile" and actor_component.target not in actor_component.hostile_towards:
+        # For non-hostile actors, only look for targets if they're already aggressive
+        elif actor_component.state == ActorState.AGGRESSIVE:
+            if not actor_component.target or not self.is_valid_target(actor_component.target):
                 new_target = self.find_nearest_hostile_target(game)
                 if new_target:
                     actor_component.target = new_target
@@ -164,6 +166,7 @@ class Actor(Entity):
                     self.update_non_aggressive_behavior(game_map, current_time, game.world.entities)
                     return
 
+        if actor_component.target:
             # Check if the target is adjacent (including diagonals)
             dx = actor_component.target.x - self.x
             dy = actor_component.target.y - self.y
@@ -178,22 +181,8 @@ class Actor(Entity):
                 else:
                     game.logger.debug(f"{self.name} attempted to attack, but the target is no longer valid")
             else:  # If not adjacent, move towards the target
-                path = self.find_path_to_target_astar(game_map, actor_component.target)
-                if path and len(path) > 1:
-                    next_step = path[1]  # First step is current position
-                    if game_map.is_walkable(next_step[0], next_step[1]):
-                        entity_at_next_step = game.world.get_entity_at(next_step[0], next_step[1])
-                        if not entity_at_next_step:
-                            self.x, self.y = next_step
-                            actor_component.last_move_time = current_time
-                            game.logger.debug(f"{self.name} moved to {next_step} using A*")
-                        else:
-                            game.logger.debug(f"{self.name} is blocked by another entity at {next_step}")
-                    else:
-                        game.logger.debug(f"{self.name} couldn't find a path to the target")
-                else:
-                    game.logger.debug(f"{self.name} couldn't find a path to the target")
-                    actor_component.target = None  # Clear the target if no path is found
+                self.move_towards_target(game_map, actor_component.target, game)
+                actor_component.last_move_time = current_time
         else:
             # If no target, use Dijkstra map for movement
             self.move_using_dijkstra(game_map, game, current_time)
@@ -316,3 +305,19 @@ class Actor(Entity):
                 key=lambda t: ((t.x - self.x)**2 + (t.y - self.y)**2)**0.5
             )
         return None
+
+    def move_towards_target(self, game_map, target, game):
+        path = self.find_path_to_target_astar(game_map, target)
+        if path and len(path) > 1:
+            next_step = path[1]  # First step is current position
+            if game_map.is_walkable(next_step[0], next_step[1]):
+                entity_at_next_step = game.world.get_entity_at(next_step[0], next_step[1])
+                if not entity_at_next_step:
+                    self.x, self.y = next_step
+                    game.logger.debug(f"{self.name} moved to {next_step} using A*")
+                else:
+                    game.logger.debug(f"{self.name} is blocked by another entity at {next_step}")
+            else:
+                game.logger.debug(f"{self.name} couldn't find a path to the target")
+        else:
+            game.logger.debug(f"{self.name} couldn't find a path to the target")

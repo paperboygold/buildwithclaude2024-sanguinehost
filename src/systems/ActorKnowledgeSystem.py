@@ -26,23 +26,15 @@ class ActorKnowledgeSystem(System):
         
         for actor in alive_actors:
             for other_actor in entities:
-                if isinstance(other_actor, Actor):
-                    known_info = actor.knowledge.get_actor_info(other_actor.name)
-                    is_dead = other_actor.get_component(FighterComponent).is_dead() or known_info.get('is_dead', False)
-                    
-                    if other_actor != actor:
-                        if game_map.is_in_fov(int(actor.x), int(actor.y)) and game_map.is_in_fov(int(other_actor.x), int(other_actor.y)):
-                            is_aggressive = other_actor.get_component(ActorComponent).state == ActorState.AGGRESSIVE
-                            is_targeting = other_actor.get_component(ActorComponent).target == actor
-                            last_seen_position = (other_actor.x, other_actor.y)
-                            proximity = ((actor.x - other_actor.x) ** 2 + (actor.y - other_actor.y) ** 2) ** 0.5
-                            direction = self.get_direction(actor, other_actor)
-                        else:
-                            is_aggressive = known_info.get('is_aggressive', False)
-                            is_targeting = known_info.get('is_targeting', False)
-                            last_seen_position = known_info.get('last_seen_position', (None, None))
-                            proximity = known_info.get('proximity', None)
-                            direction = known_info.get('direction', None)
+                if isinstance(other_actor, Actor) and other_actor != actor:
+                    if game_map.is_in_fov(int(actor.x), int(actor.y)) and game_map.is_in_fov(int(other_actor.x), int(other_actor.y)):
+                        known_info = actor.knowledge.get_actor_info(other_actor.name)
+                        is_dead = other_actor.get_component(FighterComponent).is_dead()
+                        is_aggressive = other_actor.get_component(ActorComponent).state == ActorState.AGGRESSIVE
+                        is_targeting = other_actor.get_component(ActorComponent).target == actor
+                        last_seen_position = (other_actor.x, other_actor.y)
+                        proximity = ((actor.x - other_actor.x) ** 2 + (actor.y - other_actor.y) ** 2) ** 0.5
+                        direction = self.get_direction(actor, other_actor)
 
                         actor.knowledge.update_actor_info(
                             other_actor.name,

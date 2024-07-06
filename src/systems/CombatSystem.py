@@ -130,9 +130,9 @@ class CombatSystem(System):
                         self.logger.debug(f"{entity.name} is reassessing hostility after defeat of {target.name}")
                         entity.reassess_hostility(self.game, target)
             
-            # Update knowledge for all actors
+            # Update knowledge only for actors who can see the target
             for entity in self.game.world.entities:
-                if isinstance(entity, Actor):
+                if isinstance(entity, Actor) and self.game.world.game_map.is_in_fov(int(entity.x), int(entity.y)) and self.game.world.game_map.is_in_fov(int(target.x), int(target.y)):
                     entity.knowledge.update_actor_info(
                         target.name,
                         is_dead=True,

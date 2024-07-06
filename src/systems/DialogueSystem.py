@@ -4,8 +4,9 @@ import json
 import time
 import textwrap
 import traceback
+import random
 from systems.MessageSystem import MessageChannel, Message
-from components.ActorComponent import ActorComponent
+from components.ActorComponent import ActorComponent, ActorState
 from tcod.event import KeySym
 from entities.Actor import Actor
 
@@ -100,33 +101,47 @@ You may reference your recent combat experiences if relevant to the conversation
         try:
             actor1_component = actor1.get_component(ActorComponent)
             actor2_component = actor2.get_component(ActorComponent)
+            
+            # Check if either actor is in combat
+            if actor1_component.state == ActorState.AGGRESSIVE or actor2_component.state == ActorState.AGGRESSIVE:
+                return  # Skip dialogue if either actor is in combat
+            
             current_time = time.time()
             if current_time - actor1_component.last_conversation_time < actor1_component.conversation_cooldown or \
                current_time - actor2_component.last_conversation_time < actor2_component.conversation_cooldown:
                 return  # Skip if either actor is on cooldown
 
-            actor1_component.last_conversation_time = current_time
-            actor2_component.last_conversation_time = current_time
+            # Calculate conversation likelihood
+            actor1_likelihood = actor1.character_card['aggression_type']['conversation_likelihood']
+            actor2_likelihood = actor2.character_card['aggression_type']['conversation_likelihood']
+            combined_likelihood = (actor1_likelihood + actor2_likelihood) / 2
 
-            player_can_see = self.game.world.game_map.is_in_fov(int(self.game.world.player.x), int(self.game.world.player.y)) and \
-                             (self.game.world.game_map.is_in_fov(int(actor1.x), int(actor1.y)) or 
-                              self.game.world.game_map.is_in_fov(int(actor2.x), int(actor2.y)))
+            # Check faction compatibility
+            faction_compatible = self.check_faction_compatibility(actor1, actor2)
 
-            self.logger.debug(f"Cooldown check for {actor1.name} and {actor2.name}")
-            self.logger.debug(f"Player can see conversation: {player_can_see}")
+            if random.random() < combined_likelihood and faction_compatible:
+                actor1_component.last_conversation_time = current_time
+                actor2_component.last_conversation_time = current_time
 
-            if player_can_see:
-                choice = self.get_player_choice(f"{actor1.name} and {actor2.name} are about to have a conversation. Do you want to listen?")
-                if choice:
-                    self.game.show_message(f"{actor1.name} and {actor2.name} have started a conversation.", MessageChannel.DIALOGUE, sender=actor1)
-                else:
-                    self.summarize_conversation(actor1, actor2)
-                    return
+                player_can_see = self.game.world.game_map.is_in_fov(int(self.game.world.player.x), int(self.game.world.player.y)) and \
+                                 (self.game.world.game_map.is_in_fov(int(actor1.x), int(actor1.y)) or 
+                                  self.game.world.game_map.is_in_fov(int(actor2.x), int(actor2.y)))
 
-            relationship_info = actor1.knowledge.get_relationship_story(actor2.name) or ""
-            actor2_info = actor1.knowledge.known_actors.get(actor2.name, {})
-            
-            system_prompt = f"""You are simulating a conversation between {actor1.name} and {actor2.name} in a dungeon setting.
+                self.logger.debug(f"Initiating dialogue between {actor1.name} and {actor2.name}")
+                self.logger.debug(f"Player can see conversation: {player_can_see}")
+
+                if player_can_see:
+                    choice = self.get_player_choice(f"{actor1.name} and {actor2.name} are about to have a conversation. Do you want to listen?")
+                    if choice:
+                        self.game.show_message(f"{actor1.name} and {actor2.name} have started a conversation.", MessageChannel.DIALOGUE, sender=actor1)
+                    else:
+                        self.summarize_conversation(actor1, actor2)
+                        return
+
+                relationship_info = actor1.knowledge.get_relationship_story(actor2.name) or ""
+                actor2_info = actor1.knowledge.known_actors.get(actor2.name, {})
+                
+                system_prompt = f"""You are simulating a conversation between {actor1.name} and {actor2.name} in a dungeon setting.
 {actor1.name}'s character: {actor1_component.character_card}
 {actor2.name}'s character: {actor2_component.character_card}
 Their relationship: {relationship_info}
@@ -135,56 +150,69 @@ Environmental knowledge: {actor1.knowledge.get_summary()}
 Keep responses brief and in character, typically 1-2 short sentences or 10-15 words. Be concise and direct.
 Important: Speak only in dialogue. Do not describe actions, appearances, use asterisks or quotation marks. Simply respond with what the character would say."""
 
-            # Define the initial prompt
-            actor_prompt = f"You are {actor1.name}. Start a conversation with {actor2.name} in character, briefly and naturally."
-            
-            self.logger.info(f"Starting actor dialogue between {actor1.name} and {actor2.name}")
-            self.logger.debug(f"Actor1 {actor1.name} character card: {actor1_component.character_card}")
-            self.logger.debug(f"Actor2 {actor2.name} character card: {actor2_component.character_card}")
-            self.logger.debug(f"Relationship info: {relationship_info}")
-            self.logger.info(f"API Request for {actor1.name}:")
-            self.logger.info(f"System Prompt: {system_prompt}")
-            self.logger.info(f"Actor Prompt: {actor_prompt}")
-            
-            request_body = {
-                "model": "claude-3-5-sonnet-20240620",
-                "max_tokens": 100,
-                "messages": [{"role": "user", "content": actor_prompt}],
-                "system": system_prompt,
-                "temperature": 0.7
-            }
-            
-            response = self.anthropic_client.messages.create(**request_body)
-            
-            self.logger.info(f"API Response for {actor1.name}:")
-            self.logger.info(f"Response: {json.dumps(response.model_dump(), indent=2)}")
-            
-            actor_response = response.content[0].text if response.content else ""
+                # Define the initial prompt
+                actor_prompt = f"You are {actor1.name}. Start a conversation with {actor2.name} in character, briefly and naturally."
+                
+                self.logger.info(f"Starting actor dialogue between {actor1.name} and {actor2.name}")
+                self.logger.debug(f"Actor1 {actor1.name} character card: {actor1_component.character_card}")
+                self.logger.debug(f"Actor2 {actor2.name} character card: {actor2_component.character_card}")
+                self.logger.debug(f"Relationship info: {relationship_info}")
+                self.logger.info(f"API Request for {actor1.name}:")
+                self.logger.info(f"System Prompt: {system_prompt}")
+                self.logger.info(f"Actor Prompt: {actor_prompt}")
+                
+                request_body = {
+                    "model": "claude-3-5-sonnet-20240620",
+                    "max_tokens": 100,
+                    "messages": [{"role": "user", "content": actor_prompt}],
+                    "system": system_prompt,
+                    "temperature": 0.7
+                }
+                
+                response = self.anthropic_client.messages.create(**request_body)
+                
+                self.logger.info(f"API Response for {actor1.name}:")
+                self.logger.info(f"Response: {json.dumps(response.model_dump(), indent=2)}")
+                
+                actor_response = response.content[0].text if response.content else ""
 
-            # Start a new conversation
-            conversation = [
-                {"role": "user", "content": actor_prompt},
-                {"role": "assistant", "content": actor_response}
-            ]
-            
-            if player_can_see:
-                self.game.show_message(f"{actor1.name}: {actor_response}", MessageChannel.DIALOGUE, sender=actor1)
+                # Start a new conversation
+                conversation = [
+                    {"role": "user", "content": actor_prompt},
+                    {"role": "assistant", "content": actor_response}
+                ]
+                
+                if player_can_see:
+                    self.game.show_message(f"{actor1.name}: {actor_response}", MessageChannel.DIALOGUE, sender=actor1)
 
-            # Store the conversation for future reference
-            actor1_component.current_conversation = conversation
-            actor2_component.current_conversation = conversation
-            actor1_component.conversation_partner = actor2
-            actor2_component.conversation_partner = actor1
-            actor1_component.conversation_turns = 1
-            actor2_component.conversation_turns = 0
+                # Store the conversation for future reference
+                actor1_component.current_conversation = conversation
+                actor2_component.current_conversation = conversation
+                actor1_component.conversation_partner = actor2
+                actor2_component.conversation_partner = actor1
+                actor1_component.conversation_turns = 1
+                actor2_component.conversation_turns = 0
 
-            self.logger.info(f"Conversation started. Turn counts: {actor1.name} = 1, {actor2.name} = 0")
+                self.logger.info(f"Conversation started. Turn counts: {actor1.name} = 1, {actor2.name} = 0")
 
         except Exception as e:
             self.logger.error(f"Error in actor dialogue: {str(e)}")
             self.logger.debug(traceback.format_exc())
             if player_can_see:
                 self.game.show_message(f"An error occurred during actor dialogue", MessageChannel.SYSTEM, (255, 0, 0))
+
+    def check_faction_compatibility(self, actor1, actor2):
+        faction1 = actor1.character_card['faction']
+        faction2 = actor2.character_card['faction']
+        
+        # Define faction relationships (this could be moved to a separate configuration file)
+        faction_relationships = {
+            "sages": ["sages", "enigmas"],
+            "enigmas": ["sages", "enigmas", "monsters"],
+            "monsters": ["monsters", "enigmas"]
+        }
+        
+        return faction2 in faction_relationships.get(faction1, [])
 
     def summarize_conversation(self, actor1, actor2):
         try:

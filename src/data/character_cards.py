@@ -10,8 +10,9 @@ character_cards = {
         "health": 30,
         "defense": 2,
         "power": 5,
-        "aggression_type": "peaceful",
-        "target_preference": ["none"]
+        "aggression_type": {"type": "peaceful", "conversation_likelihood": 0.8},
+        "target_preference": ["none"],
+        "faction": "sages"
     },
     "mysterious_stranger": {
         "name": "Lyra the Enigma",
@@ -24,8 +25,9 @@ character_cards = {
         "health": 30,
         "defense": 2,
         "power": 5,
-        "aggression_type": "neutral",
-        "target_preference": ["threats"]
+        "aggression_type": {"type": "neutral", "conversation_likelihood": 0.5},
+        "target_preference": ["threats"],
+        "faction": "enigmas"
     },
     "aggressive_monster": {
         "name": "Grunk the Destroyer",
@@ -38,8 +40,9 @@ character_cards = {
         "health": 30,
         "defense": 2,
         "power": 5,
-        "aggression_type": "hostile",
-        "target_preference": ["player", "other_actors"]
+        "aggression_type": {"type": "hostile", "conversation_likelihood": 0.1},
+        "target_preference": ["player", "other_actors"],
+        "faction": "monsters"
     }
 }
 
