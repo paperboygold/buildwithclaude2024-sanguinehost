@@ -39,7 +39,8 @@ class Game:
             self.main_menu_system = MainMenuSystem(self)
             self.combat_system = CombatSystem(self)
             self.game_over = False
-            self.disable_actor_dialogue = False  # Add this line
+            self.disable_actor_dialogue = False  # For toggling dialogue in-game
+            self.disable_dialogue_system = False  # For disabling dialogue system at game start
 
         except Exception as e:
             self.logger.error(f"Error initializing game: {str(e)}")
@@ -79,6 +80,9 @@ class Game:
         player_x, player_y = self.world.game_map.get_random_walkable_position()
         self.world.player = Player(player_x, player_y)
         self.world.add_entity(self.world.player)
+        
+        # Disable dialogue system at game start
+        self.disable_dialogue_system = False
         
         # Add NPCs and generate relationships
         self.add_npcs()

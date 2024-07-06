@@ -16,6 +16,8 @@ class DialogueSystem:
         self.anthropic_client = game.anthropic_client
 
     def start_dialogue(self, actor):
+        if self.game.disable_dialogue_system:
+            return
         try:
             actor_component = actor.get_component(ActorComponent)
             self.logger.info(f"Starting dialogue with {actor.name}")
@@ -92,6 +94,8 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
             self.game.show_message(f"An error occurred during dialogue", MessageChannel.SYSTEM, (255, 0, 0))
 
     def start_actor_dialogue(self, actor1, actor2):
+        if self.game.disable_dialogue_system:
+            return
         try:
             actor1_component = actor1.get_component(ActorComponent)
             actor2_component = actor2.get_component(ActorComponent)

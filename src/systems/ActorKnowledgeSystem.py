@@ -15,7 +15,7 @@ class ActorKnowledgeSystem(System):
         self.update_actor_knowledge(entities)
 
     def generate_initial_relationships(self, entities):
-        if not self.relationships_generated:
+        if not self.relationships_generated and not self.game.disable_dialogue_system:
             self.generate_actor_relationships(entities)
             self.relationships_generated = True
 
