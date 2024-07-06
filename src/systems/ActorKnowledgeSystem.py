@@ -16,6 +16,7 @@ class ActorKnowledgeSystem(System):
         self.logger = logging.getLogger(__name__)
         self.relationships_generated = False
         self.async_client = AsyncAnthropic(api_key=game.anthropic_client.api_key)
+        self.defeated_entity_positions = {}  # New attribute
 
     def update(self, entities, game_map):
         self.update_actor_knowledge(entities, game_map)
@@ -28,6 +29,11 @@ class ActorKnowledgeSystem(System):
                 if isinstance(entity, Actor) and entity != player:
                     direction = self.get_direction(player, entity)
                     self.logger.debug(f"{entity.name} is {direction} of the player")
+            
+            # Add this block to log directions of defeated entities
+            for name, position in self.defeated_entity_positions.items():
+                direction = self.get_direction(player, name)
+                self.logger.debug(f"{name} (defeated) is {direction} of the player")
 
     def generate_initial_relationships(self, entities):
         if not self.relationships_generated and not self.game.disable_dialogue_system:
@@ -40,33 +46,54 @@ class ActorKnowledgeSystem(System):
         for actor in alive_actors:
             for other_actor in entities:
                 if isinstance(other_actor, Actor) and other_actor != actor:
-                    if game_map.is_in_fov(int(actor.x), int(actor.y)) and game_map.is_in_fov(int(other_actor.x), int(other_actor.y)):
-                        known_info = actor.knowledge.get_actor_info(other_actor.name)
-                        is_dead = other_actor.get_component(FighterComponent).is_dead()
-                        is_aggressive = other_actor.get_component(ActorComponent).state == ActorState.AGGRESSIVE
-                        is_targeting = other_actor.get_component(ActorComponent).target == actor
-                        last_seen_position = (other_actor.x, other_actor.y)
-                        proximity = ((actor.x - other_actor.x) ** 2 + (actor.y - other_actor.y) ** 2) ** 0.5
-                        direction = self.get_direction(actor, other_actor)
-
-                        actor.knowledge.update_actor_info(
-                            other_actor.name,
-                            entity=other_actor,
-                            is_aggressive=is_aggressive,
-                            is_targeting=is_targeting,
-                            last_seen_position=last_seen_position,
-                            proximity=proximity,
-                            direction=direction,
-                            is_dead=is_dead
-                        )
+                    self.update_actor_info(actor, other_actor, game_map)
+            
+            # Update knowledge about defeated entities
+            for defeated_name, position in self.defeated_entity_positions.items():
+                direction = self.get_direction(actor, defeated_name)
+                actor.knowledge.update_actor_info(
+                    defeated_name,
+                    is_dead=True,
+                    last_seen_position=position,
+                    direction=direction
+                )
 
             current_room = next((room for room in game_map.rooms if room.x <= actor.x < room.x + room.width and room.y <= actor.y < room.y + room.height), None)
             if current_room:
                 actor.knowledge.add_location(f"Room at ({current_room.x}, {current_room.y})")
 
-    def get_direction(self, actor1, actor2):
-        dx = actor2.x - actor1.x
-        dy = actor2.y - actor1.y
+    def update_actor_info(self, actor, other_actor, game_map):
+        if game_map.is_in_fov(int(actor.x), int(actor.y)) and game_map.is_in_fov(int(other_actor.x), int(other_actor.y)):
+            is_dead = other_actor.get_component(FighterComponent).is_dead()
+            is_aggressive = other_actor.get_component(ActorComponent).state == ActorState.AGGRESSIVE
+            is_targeting = other_actor.get_component(ActorComponent).target == actor
+            last_seen_position = (other_actor.x, other_actor.y)
+            proximity = ((actor.x - other_actor.x) ** 2 + (actor.y - other_actor.y) ** 2) ** 0.5
+            direction = self.get_direction(actor, other_actor)
+
+            actor.knowledge.update_actor_info(
+                other_actor.name,
+                entity=other_actor,
+                is_aggressive=is_aggressive,
+                is_targeting=is_targeting,
+                last_seen_position=last_seen_position,
+                proximity=proximity,
+                direction=direction,
+                is_dead=is_dead
+            )
+
+    def get_direction(self, actor1, actor2_or_name):
+        if isinstance(actor2_or_name, str):
+            # If it's a defeated entity
+            x2, y2 = self.defeated_entity_positions.get(actor2_or_name, (None, None))
+            if x2 is None or y2 is None:
+                return "unknown"
+        else:
+            # If it's an active entity
+            x2, y2 = actor2_or_name.x, actor2_or_name.y
+
+        dx = x2 - actor1.x
+        dy = y2 - actor1.y
         angle = math.atan2(dy, dx)
         
         directions = ["east", "southeast", "south", "southwest", "west", "northwest", "north", "northeast"]

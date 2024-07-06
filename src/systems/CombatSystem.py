@@ -116,6 +116,7 @@ class CombatSystem(System):
             self.game.game_over = True
         else:
             self.logger.info(f"Removing defeated entity: {target.name}")
+            self.update_defeated_entity_position(target)
             self.game.world.entities.remove(target)
             self.clear_defeated_entity_as_target(target)
             
@@ -184,3 +185,6 @@ class CombatSystem(System):
                     actor_component.state = ActorState.IDLE
                 actor_component.target = None
                 self.game.logger.info(f"{entity.name} has reset their hostility and returned to {'IDLE' if entity.aggression_type != 'hostile' else 'AGGRESSIVE'} state")
+
+    def update_defeated_entity_position(self, entity):
+        self.game.world.actor_knowledge_system.defeated_entity_positions[entity.name] = (entity.x, entity.y)
