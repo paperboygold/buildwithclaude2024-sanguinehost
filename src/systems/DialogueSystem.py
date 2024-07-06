@@ -11,6 +11,7 @@ from components.ActorComponent import ActorComponent, ActorState, EmotionalState
 from components.KnowledgeComponent import KnowledgeComponent
 from tcod.event import KeySym
 from entities.Actor import Actor
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 class DialogueSystem:
     def __init__(self, game):
@@ -516,33 +517,62 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
             return 0  # Neutral
 
     def process_dialogue(self, speaker, listener, dialogue):
-        sentiment = self.analyze_sentiment(dialogue)
-        
-        # Update emotional state
+        sentiment_analyzer = SentimentIntensityAnalyzer()
+        sentiment_scores = sentiment_analyzer.polarity_scores(dialogue)
+        compound_score = sentiment_scores['compound']
+
+        # Get the listener's component
         listener_component = listener.get_component(ActorComponent)
-        
-        if sentiment == 1:  # Positive
+
+        # Update the moving average of sentiment scores
+        if not hasattr(listener_component, 'sentiment_history'):
+            listener_component.sentiment_history = []
+        listener_component.sentiment_history.append(compound_score)
+        if len(listener_component.sentiment_history) > 5:  # Keep last 5 interactions
+            listener_component.sentiment_history.pop(0)
+
+        # Calculate the average sentiment
+        avg_sentiment = sum(listener_component.sentiment_history) / len(listener_component.sentiment_history)
+
+        # Apply a lower threshold to the average sentiment
+        threshold = 0.07  # Increased from 0.05 to 0.07
+        if abs(avg_sentiment) < threshold:
+            relationship_change = 0
+        else:
+            relationship_change = self.map_sentiment_to_relationship(avg_sentiment)
+
+        # Update emotional state
+        if compound_score > 0.03:  # Positive
             listener_component.emotional_state = EmotionalState.HAPPY
-            listener_component.emotional_intensity = min(1.0, listener_component.emotional_intensity + 0.2)
-        elif sentiment == -1:  # Negative
+            listener_component.emotional_intensity = min(1.0, listener_component.emotional_intensity + abs(compound_score) * 0.2)
+        elif compound_score < -0.03:  # Negative
             listener_component.emotional_state = EmotionalState.ANGRY
-            listener_component.emotional_intensity = min(1.0, listener_component.emotional_intensity + 0.2)
+            listener_component.emotional_intensity = min(1.0, listener_component.emotional_intensity + abs(compound_score) * 0.2)
         else:  # Neutral
-            listener_component.emotional_intensity = max(0.0, listener_component.emotional_intensity - 0.1)
-        
+            listener_component.emotional_intensity = max(0.0, listener_component.emotional_intensity - 0.05)
+
         # Update relationship
-        relationship_change = sentiment * 5  # Adjust this multiplier as needed
         listener.knowledge.update_relationship(speaker.name, relationship_change)
         speaker.knowledge.update_relationship(listener.name, relationship_change)
-        
+
         new_relationship_value = listener.knowledge.relationships[speaker.name]
         self.logger.info(f"{listener.name}'s relationship with {speaker.name} changed by {relationship_change}. New value: {new_relationship_value}")
         self.game.show_message(f"{listener.name}'s relationship with {speaker.name} is now {new_relationship_value}", MessageChannel.SYSTEM)
-        
+
         # Check for aggression trigger
         if listener_component.emotional_state == EmotionalState.ANGRY and listener_component.emotional_intensity > 0.7:
-            if listener.knowledge.relationships[speaker.name] < -50:
+            if listener.knowledge.relationships[speaker.name] < -20:
                 self.trigger_aggression(listener, speaker)
+
+    def map_sentiment_to_relationship(self, compound_score):
+        # Map the compound score (-1 to 1) to a relationship change value (-3 to 3)
+        # Use a less steep curve (0.7 power instead of 0.5) to make small changes less impactful
+        max_change = 3
+        if compound_score > 0:
+            change = min(int((compound_score ** 0.7) * 3), max_change)
+        else:
+            change = max(int(-((-compound_score) ** 0.7) * 3), -max_change)
+        return change
 
     def trigger_aggression(self, aggressor, target):
         if isinstance(target, Actor) and not target.aggressive:
