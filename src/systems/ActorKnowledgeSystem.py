@@ -6,19 +6,22 @@ import random
 import logging
 import traceback
 import math
+import asyncio
+from anthropic import AsyncAnthropic
 
 class ActorKnowledgeSystem(System):
     def __init__(self, game):
         self.game = game
         self.logger = logging.getLogger(__name__)
         self.relationships_generated = False
+        self.async_client = AsyncAnthropic(api_key=game.anthropic_client.api_key)
 
     def update(self, entities, game_map):
         self.update_actor_knowledge(entities, game_map)
 
     def generate_initial_relationships(self, entities):
         if not self.relationships_generated and not self.game.disable_dialogue_system:
-            self.generate_actor_relationships(entities)
+            asyncio.run(self.generate_actor_relationships(entities))
             self.relationships_generated = True
 
     def update_actor_knowledge(self, entities, game_map):
@@ -60,8 +63,9 @@ class ActorKnowledgeSystem(System):
         index = round(4 * angle / math.pi) % 8
         return directions[index]
 
-    def generate_actor_relationships(self, entities):
+    async def generate_actor_relationships(self, entities):
         actor_entities = [entity for entity in entities if isinstance(entity, Actor)]
+        tasks = []
         for i, actor1 in enumerate(actor_entities):
             for actor2 in actor_entities[i+1:]:
                 relationship_type = "stranger"
@@ -70,11 +74,16 @@ class ActorKnowledgeSystem(System):
                         "friend", "rival", "mentor", "student", "ally", "enemy",
                         "acquaintance", "family", "colleague"
                     ])
-                relationship_story = self.generate_relationship_story(actor1, actor2, relationship_type)
-                actor1.knowledge.add_actor(actor2.name, relationship_type, relationship_story)
-                actor2.knowledge.add_actor(actor1.name, relationship_type, relationship_story)
+                tasks.append(self.generate_relationship_story(actor1, actor2, relationship_type))
+        
+        results = await asyncio.gather(*tasks)
+        
+        for result in results:
+            actor1, actor2, relationship_type, relationship_story = result
+            actor1.knowledge.add_actor(actor2.name, relationship_type, relationship_story)
+            actor2.knowledge.add_actor(actor1.name, relationship_type, relationship_story)
 
-    def generate_relationship_story(self, actor1, actor2, relationship_type):
+    async def generate_relationship_story(self, actor1, actor2, relationship_type):
         actor1_component = actor1.get_component(ActorComponent)
         actor2_component = actor2.get_component(ActorComponent)
         prompt = f"Generate a very brief story (1-2 sentences) about the {relationship_type} relationship between {actor1.name} and {actor2.name}. {actor1.name}'s character: {actor1_component.character_card}. {actor2.name}'s character: {actor2_component.character_card}."
@@ -83,7 +92,7 @@ class ActorKnowledgeSystem(System):
         self.logger.debug(f"Relationship story prompt: {prompt}")
         
         try:
-            response = self.game.anthropic_client.messages.create(
+            response = await self.async_client.messages.create(
                 model="claude-3-5-sonnet-20240620",
                 max_tokens=100,
                 messages=[{"role": "user", "content": prompt}],
@@ -91,8 +100,8 @@ class ActorKnowledgeSystem(System):
             )
             story = response.content[0].text.strip()
             self.logger.info(f"Generated relationship story: {story}")
-            return story
+            return actor1, actor2, relationship_type, story
         except Exception as e:
             self.logger.error(f"Error generating relationship story: {str(e)}")
             self.logger.debug(traceback.format_exc())
-            return f"{actor1.name} and {actor2.name} have a {relationship_type} relationship."
+            return actor1, actor2, relationship_type, f"{actor1.name} and {actor2.name} have a {relationship_type} relationship."
