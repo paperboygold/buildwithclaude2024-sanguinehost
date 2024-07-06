@@ -4,13 +4,12 @@ from ecs.ecs import System
 from utils.mapgen import TileType
 
 class RenderSystem(System):
-    def __init__(self, game, world, message_system, root_console, game_console, dialogue_console, context):
+    def __init__(self, game, world, message_system, root_console, game_console, context):
         self.game = game
         self.world = world
         self.message_system = message_system
         self.root_console = root_console
         self.game_console = game_console
-        self.dialogue_console = dialogue_console
         self.context = context
         self.width = game.width
         self.height = game.height
@@ -24,18 +23,15 @@ class RenderSystem(System):
         self.camera_y = int(self.world.player.y - self.game_area_height // 2)
 
     def render_message_log(self):
-        self.dialogue_console.clear()
-        self.dialogue_console.draw_frame(0, 0, self.width, self.dialogue_height, ' ')
-
-        y = self.dialogue_height - 2
+        y = self.height - 2  # Start one line higher
         for message in self.message_system.get_visible_messages():
-            wrapped_text = textwrap.wrap(message.text, self.width - 2)
+            wrapped_text = textwrap.wrap(message.text, self.width - 4)  # Reduce width by 2 on each side
             for line in reversed(wrapped_text):
-                if y < 1:
+                if y <= self.game_area_height:
                     break
-                self.dialogue_console.print(1, y, line, message.color)
+                self.root_console.print(1, y, line, message.color)  # Move text 1 character to the right
                 y -= 1
-            if y < 1:
+            if y <= self.game_area_height:
                 break
 
     def render(self):
@@ -48,8 +44,8 @@ class RenderSystem(System):
             self.game.fov_recompute = False
 
         self.update_camera()
+        self.root_console.clear()
         self.game_console.clear()
-        self.dialogue_console.clear()
         
         # Render game area
         self.game_console.draw_frame(0, 0, self.width, self.game_area_height, ' ')
@@ -62,14 +58,15 @@ class RenderSystem(System):
         # Render entities
         self.render_entities()
         
-        # Render dialogue area
-        self.render_message_log()
-        self.dialogue_console.draw_rect(1, 0, self.width - 2, 1, ord('─'))
-        self.dialogue_console.put_char(self.width - 1, 0, ord('┐'))
-        
-        # Blit game and dialogue consoles to root console
+        # Blit game console to root console
         self.game_console.blit(self.root_console, 0, 0)
-        self.dialogue_console.blit(self.root_console, 0, self.game_area_height)
+        
+        # Render dialogue area
+        self.root_console.draw_frame(0, self.game_area_height, self.width, self.dialogue_height, ' ')
+        self.root_console.draw_rect(1, self.game_area_height, self.width - 2, 1, ord('─'))
+        self.root_console.put_char(0, self.game_area_height, ord('┌'))
+        self.root_console.put_char(self.width - 1, self.game_area_height, ord('┐'))
+        self.render_message_log()
         
         self.context.present(self.root_console)
 

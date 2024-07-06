@@ -6,6 +6,17 @@ class MainMenuSystem:
     def __init__(self, game):
         self.game = game
 
+    def show_loading_screen(self):
+        self.game.root_console.clear(bg=(0, 0, 0))  # Set background to black
+        self.game.root_console.print(
+            self.game.width // 2,
+            self.game.height // 2,
+            "Loading...",
+            fg=(255, 255, 255),
+            alignment=tcod.CENTER
+        )
+        self.game.context.present(self.game.root_console)
+
     def show_main_menu(self):
         options = ['New Game', 'Load Game', 'Quit']
         selected = 0

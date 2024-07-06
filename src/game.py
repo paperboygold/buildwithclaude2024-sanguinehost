@@ -26,6 +26,27 @@ class Game:
             self.world = world
             if self.world:
                 self.world.game = self
+
+            self.width = 80
+            self.height = 50
+            self.tile_size = 16
+            self.pixel_width = self.width * self.tile_size
+            self.pixel_height = self.height * self.tile_size
+            self.game_area_height = 38
+            self.dialogue_height = 12
+
+            self.context = tcod.context.new_terminal(
+                self.width,
+                self.height,
+                title="Sanguine Host",
+                vsync=True,
+                tileset=tcod.tileset.load_tilesheet(
+                    "assets/tiles/terminal16x16_gs_ro.png", 16, 16, tcod.tileset.CHARMAP_CP437
+                )
+            )
+            self.root_console = tcod.Console(self.width, self.height)
+            self.game_console = tcod.Console(self.width, self.game_area_height)
+            
             api_key = load_api_key()
             if not api_key:
                 raise ValueError("No API key provided")
@@ -33,14 +54,14 @@ class Game:
             
             self.init_system = GameInitializationSystem(self)
             self.init_system.initialize_all()
-            self.render_system = self.init_system.game.render_system  # Set render_system after initializing all systems
+            self.render_system = self.init_system.game.render_system
             
             self.loop_system = GameLoopSystem(self)
             self.main_menu_system = MainMenuSystem(self)
             self.combat_system = CombatSystem(self)
             self.game_over = False
-            self.disable_actor_dialogue = False  # For toggling dialogue in-game
-            self.disable_dialogue_system = False  # For disabling dialogue system at game start
+            self.disable_actor_dialogue = False
+            self.disable_dialogue_system = False
 
         except Exception as e:
             self.logger.error(f"Error initializing game: {str(e)}")
@@ -72,6 +93,9 @@ class Game:
         return self.player_system.move_player(dx, dy)
 
     def new_game(self, single_room=True):
+        # Display loading screen
+        self.main_menu_system.show_loading_screen()
+        
         # Create a new world
         self.world = World(80, 38, self, MapType.DUNGEON, single_room=single_room)
         self.setup_world(self.world)
@@ -155,21 +179,6 @@ class Game:
         self.input_system = InputSystem(self)
         
         # Reset game dimensions and consoles
-        self.init_system.initialize_game_dimensions()
-        self.init_system.initialize_consoles()
-        
-        # Reset camera and FOV
-        self.camera_x = 0
-        self.camera_y = 0
-        self.fov_radius = 10
-        
-        # Clear any existing entities
-        if hasattr(self, 'world') and self.world:
-            self.world.entities.clear()
-        
-        self.show_message("Game reset. Returning to main menu.", MessageChannel.SYSTEM)
-
-    def initialize_game_dimensions(self):
         self.width = 80
         self.height = 50
         self.tile_size = 16
@@ -177,21 +186,12 @@ class Game:
         self.pixel_height = self.height * self.tile_size
         self.game_area_height = 38
         self.dialogue_height = 12
-
-    def initialize_consoles(self):
-        self.context = tcod.context.new_terminal(
-            self.width,
-            self.height,
-            title="Sanguine Host",
-            vsync=True,
-            tileset=tcod.tileset.load_tilesheet(
-                "assets/tiles/terminal16x16_gs_ro.png", 16, 16, tcod.tileset.CHARMAP_CP437
-            )
-        )
-        self.root_console = tcod.console.Console(self.width, self.height)
-        self.game_console = tcod.console.Console(self.width, self.game_area_height)
-        self.dialogue_console = tcod.console.Console(self.width, self.dialogue_height)
+        
+        # Clear any existing entities
+        if hasattr(self, 'world') and self.world:
+            self.world.entities.clear()
+        
+        self.show_message("Game reset. Returning to main menu.", MessageChannel.SYSTEM)
 
     def is_game_over(self):
         return self.game_over
-
