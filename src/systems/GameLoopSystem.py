@@ -22,8 +22,7 @@ class GameLoopSystem:
             if action_taken:
                 self.update_game_state()
                 self.handle_actor_interactions()
-            
-            self.game.logger.debug("Game loop iteration completed")
+                self.game.logger.debug("Game loop iteration completed")
 
     def handle_game_over(self):
         self.game.show_message("Game Over. Press any key to return to main menu.", MessageChannel.SYSTEM)

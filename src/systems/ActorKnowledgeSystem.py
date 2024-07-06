@@ -8,6 +8,7 @@ import traceback
 import math
 import asyncio
 from anthropic import AsyncAnthropic
+from entities.Player import Player
 
 class ActorKnowledgeSystem(System):
     def __init__(self, game):
@@ -18,6 +19,15 @@ class ActorKnowledgeSystem(System):
 
     def update(self, entities, game_map):
         self.update_actor_knowledge(entities, game_map)
+        
+        # Add this new block for direction logging
+        player = next((entity for entity in entities if isinstance(entity, Player)), None)
+        if player:
+            self.logger.debug("Actor directions relative to player:")
+            for entity in entities:
+                if isinstance(entity, Actor) and entity != player:
+                    direction = self.get_direction(player, entity)
+                    self.logger.debug(f"{entity.name} is {direction} of the player")
 
     def generate_initial_relationships(self, entities):
         if not self.relationships_generated and not self.game.disable_dialogue_system:
@@ -59,7 +69,7 @@ class ActorKnowledgeSystem(System):
         dy = actor2.y - actor1.y
         angle = math.atan2(dy, dx)
         
-        directions = ["east", "northeast", "north", "northwest", "west", "southwest", "south", "southeast"]
+        directions = ["east", "southeast", "south", "southwest", "west", "northwest", "north", "northeast"]
         index = round(4 * angle / math.pi) % 8
         return directions[index]
 
