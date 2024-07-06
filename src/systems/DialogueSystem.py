@@ -48,7 +48,8 @@ class DialogueSystem:
                     system_prompt = f"""You are {actor.name}, an NPC in a roguelike game. Character: {actor_component.character_card}
 Environmental knowledge: {actor.knowledge.get_summary()}
 {relationship_info}Respond in character with extremely brief responses, typically 1-2 short sentences or 10 words or less. Be concise and direct.
-Important: Speak only in dialogue. Do not describe actions, appearances, use asterisks or quotation marks. Simply respond with what your character would say."""
+Important: Speak only in dialogue. Do not describe actions, appearances, use asterisks or quotation marks. Simply respond with what your character would say.
+You may reference your recent combat experiences if relevant to the conversation."""
                     
                     self.logger.info(f"API Request for {actor.name}:")
                     self.logger.info(f"System Prompt: {system_prompt}")

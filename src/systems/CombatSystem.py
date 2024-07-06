@@ -13,6 +13,11 @@ class CombatSystem(System):
         self.aggressors = {}  # Dictionary to keep track of aggressors
         self.combat_participants = set()  # Set to keep track of actors in combat
 
+    def add_combat_memory(self, actor, memory):
+        if isinstance(actor, Actor):
+            actor.knowledge.add_combat_memory(memory)
+            self.logger.info(f"Added combat memory for {actor.name}: {memory}")
+
     def attack(self, attacker, target):
         attacker_fighter = attacker.get_component(FighterComponent)
         target_fighter = target.get_component(FighterComponent)
@@ -98,6 +103,13 @@ class CombatSystem(System):
     def kill(self, target):
         self.logger.info(f"Combat result: {target.name} is defeated")
         self.game.show_message(f"{target.name.capitalize()} is defeated!", MessageChannel.COMBAT)
+        
+        # Add combat memory for all participants
+        for participant in self.combat_participants:
+            if participant != target:
+                memory = f"Defeated {target.name} in combat"
+                self.add_combat_memory(participant, memory)
+        
         if target == self.game.world.player:
             self.logger.info("Game Over: Player has been defeated")
             self.game.show_message("Game Over! Press any key to return to the main menu.", MessageChannel.SYSTEM)
@@ -105,14 +117,19 @@ class CombatSystem(System):
         else:
             self.logger.info(f"Removing defeated entity: {target.name}")
             self.game.world.entities.remove(target)
-            self.clear_defeated_entity_as_target(target)  # Add this line
-            # Only call calm_down for non-aggressive actors
+            self.clear_defeated_entity_as_target(target)
+            
+            # Add combat memory for the defeated entity
+            memory = f"Was defeated in combat"
+            self.add_combat_memory(target, memory)
+            
             if isinstance(target, Actor) and target.aggression_type != "hostile":
                 self.logger.info(f"Reassessing hostility for other actors due to defeat of {target.name}")
                 for entity in self.game.world.entities:
                     if isinstance(entity, Actor) and entity.aggression_type == "hostile":
                         self.logger.debug(f"{entity.name} is reassessing hostility after defeat of {target.name}")
                         entity.reassess_hostility(self.game, target)
+        
         self.clear_aggressor(target)
         self.logger.debug(f"Aggressor cleared for defeated entity: {target.name}")
         self.end_combat(target)
