@@ -2,6 +2,13 @@ from enum import Enum, auto
 from ecs.ecs import Component
 from data.character_cards import get_character_card
 
+class EmotionalState(Enum):
+    NEUTRAL = auto()
+    HAPPY = auto()
+    SAD = auto()
+    ANGRY = auto()
+    AFRAID = auto()
+
 class ActorState(Enum):
     IDLE = auto()
     PATROL = auto()
@@ -52,3 +59,5 @@ class ActorComponent(Component):
         self.aggressive_targets = set()
         self.last_target_evaluation = 0
         self.hostile_towards = set()
+        self.emotional_state = EmotionalState.NEUTRAL
+        self.emotional_intensity = 0.0

@@ -6,6 +6,7 @@ class KnowledgeComponent(Component):
         self.known_locations = set()
         self.conversation_memories = []
         self.combat_memories = []
+        self.relationships = {}
 
     def add_actor(self, actor_name, relationship="stranger", relationship_story="", is_aggressive=False, is_targeting=False, last_seen_position=None, proximity=None, direction=None):
         self.known_actors[actor_name] = {
@@ -15,8 +16,15 @@ class KnowledgeComponent(Component):
             "is_targeting": is_targeting,
             "last_seen_position": last_seen_position,
             "proximity": proximity,
-            "direction": direction
+            "direction": direction,
+            "relationship_value": 0  # Range from -100 (hostile) to 100 (friendly)
         }
+        self.relationships[actor_name] = 0
+
+    def update_relationship(self, actor_name, value):
+        if actor_name in self.relationships:
+            self.relationships[actor_name] = max(-100, min(100, self.relationships[actor_name] + value))
+            self.known_actors[actor_name]["relationship_value"] = self.relationships[actor_name]
 
     def update_actor_info(self, actor_name, entity=None, is_aggressive=None, is_targeting=None, last_seen_position=None, proximity=None, direction=None, is_dead=None):
         if actor_name not in self.known_actors:

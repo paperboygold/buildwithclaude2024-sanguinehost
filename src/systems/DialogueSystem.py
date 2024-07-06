@@ -5,8 +5,10 @@ import time
 import textwrap
 import traceback
 import random
+import re
 from systems.MessageSystem import MessageChannel, Message
-from components.ActorComponent import ActorComponent, ActorState
+from components.ActorComponent import ActorComponent, ActorState, EmotionalState
+from components.KnowledgeComponent import KnowledgeComponent
 from tcod.event import KeySym
 from entities.Actor import Actor
 
@@ -37,6 +39,9 @@ class DialogueSystem:
                 self.game.show_message(f"You: {user_input}", MessageChannel.DIALOGUE, (0, 255, 0))
             
                 actor_component.dialogue_history.append({"role": "user", "content": user_input})
+                
+                # Process player's dialogue
+                self.process_dialogue(self.game.world.player, actor, user_input)
                 
                 try:
                     relationship_info = ""
@@ -76,6 +81,18 @@ You may reference your recent combat experiences if relevant to the conversation
                     actor_component.dialogue_history.append({"role": "assistant", "content": actor_response})
                     
                     self.game.show_message(f"{actor.name}: {actor_response}", MessageChannel.DIALOGUE, sender=actor)
+                    
+                    # Process NPC's dialogue
+                    self.process_dialogue(actor, self.game.world.player, actor_response)
+                    
+                    # Display current relationship status
+                    relationship_value = actor.knowledge.relationships.get(self.game.world.player.name, 0)
+                    self.game.show_message(f"Current relationship with {actor.name}: {relationship_value}", MessageChannel.SYSTEM)
+                    
+                    # Check if the dialogue should end due to aggression
+                    if actor_component.state == ActorState.AGGRESSIVE:
+                        self.game.show_message(f"{actor.name} becomes hostile and ends the conversation!", MessageChannel.DIALOGUE)
+                        break
                 except Exception as e:
                     self.logger.error(f"Error in AI response: {str(e)}")
                     self.logger.debug(traceback.format_exc())
@@ -482,6 +499,49 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
             self.logger.error(f"Error in summarizing full conversation: {str(e)}")
             self.logger.debug(traceback.format_exc())
             return "The conversation ended without a clear summary."
+
+    def analyze_sentiment(self, text):
+        positive_words = set(['good', 'great', 'excellent', 'happy', 'kind', 'friendly'])
+        negative_words = set(['bad', 'terrible', 'awful', 'sad', 'angry', 'hostile'])
+        
+        words = re.findall(r'\w+', text.lower())
+        positive_count = sum(word in positive_words for word in words)
+        negative_count = sum(word in negative_words for word in words)
+        
+        if positive_count > negative_count:
+            return 1  # Positive
+        elif negative_count > positive_count:
+            return -1  # Negative
+        else:
+            return 0  # Neutral
+
+    def process_dialogue(self, speaker, listener, dialogue):
+        sentiment = self.analyze_sentiment(dialogue)
+        
+        # Update emotional state
+        listener_component = listener.get_component(ActorComponent)
+        
+        if sentiment == 1:  # Positive
+            listener_component.emotional_state = EmotionalState.HAPPY
+            listener_component.emotional_intensity = min(1.0, listener_component.emotional_intensity + 0.2)
+        elif sentiment == -1:  # Negative
+            listener_component.emotional_state = EmotionalState.ANGRY
+            listener_component.emotional_intensity = min(1.0, listener_component.emotional_intensity + 0.2)
+        else:  # Neutral
+            listener_component.emotional_intensity = max(0.0, listener_component.emotional_intensity - 0.1)
+        
+        # Update relationship
+        listener_knowledge = listener.get_component(KnowledgeComponent)
+        relationship_change = sentiment * 5  # Adjust this multiplier as needed
+        listener_knowledge.update_relationship(speaker.name, relationship_change)
+        
+        self.logger.info(f"{listener.name}'s relationship with {speaker.name} changed by {relationship_change}")
+        self.logger.info(f"{listener.name}'s current emotional state: {listener_component.emotional_state}, intensity: {listener_component.emotional_intensity}")
+        
+        # Check for aggression trigger
+        if listener_component.emotional_state == EmotionalState.ANGRY and listener_component.emotional_intensity > 0.7:
+            if listener_knowledge.relationships[speaker.name] < -50:
+                self.trigger_aggression(listener, speaker)
 
     def trigger_aggression(self, aggressor, target):
         if isinstance(target, Actor) and not target.aggressive:
