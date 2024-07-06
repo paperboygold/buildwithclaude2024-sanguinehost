@@ -52,11 +52,8 @@ class Game:
                 raise ValueError("No API key provided")
             self.anthropic_client = anthropic.Anthropic(api_key=api_key)
             
-            self.init_system = GameInitializationSystem(self)
-            self.init_system.initialize_all()
-            self.render_system = self.init_system.game.render_system
+            self.init_common_game_state()
             
-            self.loop_system = GameLoopSystem(self)
             self.main_menu_system = MainMenuSystem(self)
             self.combat_system = CombatSystem(self)
             self.game_over = False
@@ -67,6 +64,17 @@ class Game:
             self.logger.error(f"Error initializing game: {str(e)}")
             self.logger.debug(traceback.format_exc())
             raise
+
+    def init_common_game_state(self):
+        self.init_system = GameInitializationSystem(self)
+        self.init_system.initialize_all()
+        self.render_system = self.init_system.game.render_system
+        self.message_system = self.init_system.game.message_system
+        self.combat_system = CombatSystem(self)
+        self.loop_system = GameLoopSystem(self)
+        self.player_system = PlayerSystem(self)
+        self.dialogue_system = DialogueSystem(self)
+        self.input_system = InputSystem(self)
 
     def setup_world(self, world):
         self.world = world
@@ -168,25 +176,7 @@ class Game:
         self.world = None
         self.fov_recompute = True
         
-        # Reset systems
-        self.init_system = GameInitializationSystem(self)
-        self.init_system.initialize_all()
-        self.render_system = self.init_system.game.render_system
-        self.message_system.clear_messages()
-        self.combat_system = CombatSystem(self)
-        self.loop_system = GameLoopSystem(self)
-        self.player_system = PlayerSystem(self)
-        self.dialogue_system = DialogueSystem(self)
-        self.input_system = InputSystem(self)
-        
-        # Reset game dimensions and consoles
-        self.width = 80
-        self.height = 50
-        self.tile_size = 16
-        self.pixel_width = self.width * self.tile_size
-        self.pixel_height = self.height * self.tile_size
-        self.game_area_height = 38
-        self.dialogue_height = 12
+        self.init_common_game_state()
         
         # Clear any existing entities
         if hasattr(self, 'world') and self.world:

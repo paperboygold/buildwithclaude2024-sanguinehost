@@ -326,7 +326,7 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
                 "max_tokens": 100,
                 "messages": conversation,
                 "system": system_prompt,
-                "temperature": 0.7
+                "temperature": 0.93
             }
             
             response = self.anthropic_client.messages.create(**request_body)
@@ -351,19 +351,10 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
 
             # Check if the conversation should end
             if actor1_component.conversation_turns + actor2_component.conversation_turns >= 6:
-                # End the conversation
                 conversation_history = actor1_component.current_conversation
-                self.end_actor_conversation(actor1, actor2)
-
-                # Generate summary separately
-                summary = self.generate_conversation_summary(actor1, actor2, conversation_history)
-
-                # Add the summary to both actors' memories
-                self.add_conversation_memory(actor1, actor2, summary)
-
+                summary = self.end_conversation(actor1, actor2, conversation_history)
                 if player_can_see:
                     self.game.show_message(f"Conversation summary: {summary}", MessageChannel.DIALOGUE)
-
                 return
 
         except Exception as e:
@@ -371,6 +362,12 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
             self.logger.debug(traceback.format_exc())
             if player_can_see:
                 self.game.show_message(f"An error occurred during actor dialogue", MessageChannel.SYSTEM, (255, 0, 0))
+
+    def end_conversation(self, actor1, actor2, conversation_history):
+        self.end_actor_conversation(actor1, actor2)
+        summary = self.generate_conversation_summary(actor1, actor2, conversation_history)
+        self.add_conversation_memory(actor1, actor2, summary)
+        return summary
 
     def end_actor_conversation(self, actor1, actor2):
         actor1_component = actor1.get_component(ActorComponent)
@@ -405,7 +402,7 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
                 "max_tokens": 100,
                 "messages": conversation_history + [{"role": "user", "content": "Summarize the conversation."}],
                 "system": system_prompt,
-                "temperature": 0.7
+                "temperature": 0.93
             }
             
             self.logger.debug(f"Conversation summary API request: {json.dumps(request_body, indent=2)}")
@@ -501,21 +498,6 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
             self.logger.debug(traceback.format_exc())
             return "The conversation ended without a clear summary."
 
-    def analyze_sentiment(self, text):
-        positive_words = set(['good', 'great', 'excellent', 'happy', 'kind', 'friendly'])
-        negative_words = set(['bad', 'terrible', 'awful', 'sad', 'angry', 'hostile'])
-        
-        words = re.findall(r'\w+', text.lower())
-        positive_count = sum(word in positive_words for word in words)
-        negative_count = sum(word in negative_words for word in words)
-        
-        if positive_count > negative_count:
-            return 1  # Positive
-        elif negative_count > positive_count:
-            return -1  # Negative
-        else:
-            return 0  # Neutral
-
     def process_dialogue(self, speaker, listener, dialogue):
         sentiment_analyzer = SentimentIntensityAnalyzer()
         sentiment_scores = sentiment_analyzer.polarity_scores(dialogue)
@@ -534,20 +516,20 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
         # Calculate the average sentiment
         avg_sentiment = sum(listener_component.sentiment_history) / len(listener_component.sentiment_history)
 
-        # Apply a lower threshold to the average sentiment
-        threshold = 0.07  # Increased from 0.05 to 0.07
+        # Apply a threshold to the average sentiment
+        threshold = 0.06  # Middle ground between 0.05 and 0.07
         if abs(avg_sentiment) < threshold:
             relationship_change = 0
         else:
             relationship_change = self.map_sentiment_to_relationship(avg_sentiment)
 
         # Update emotional state
-        if compound_score > 0.03:  # Positive
+        if compound_score > 0.025:  # Middle ground between 0.02 and 0.03
             listener_component.emotional_state = EmotionalState.HAPPY
-            listener_component.emotional_intensity = min(1.0, listener_component.emotional_intensity + abs(compound_score) * 0.2)
-        elif compound_score < -0.03:  # Negative
+            listener_component.emotional_intensity = min(1.0, listener_component.emotional_intensity + abs(compound_score) * 0.225)  # Middle ground between 0.2 and 0.25
+        elif compound_score < -0.025:  # Middle ground between -0.02 and -0.03
             listener_component.emotional_state = EmotionalState.ANGRY
-            listener_component.emotional_intensity = min(1.0, listener_component.emotional_intensity + abs(compound_score) * 0.2)
+            listener_component.emotional_intensity = min(1.0, listener_component.emotional_intensity + abs(compound_score) * 0.225)  # Middle ground between 0.2 and 0.25
         else:  # Neutral
             listener_component.emotional_intensity = max(0.0, listener_component.emotional_intensity - 0.05)
 
@@ -565,13 +547,12 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
                 self.trigger_aggression(listener, speaker)
 
     def map_sentiment_to_relationship(self, compound_score):
-        # Map the compound score (-1 to 1) to a relationship change value (-3 to 3)
-        # Use a less steep curve (0.7 power instead of 0.5) to make small changes less impactful
-        max_change = 3
+        # Use a middle ground curve (0.75 power instead of 0.7 or 0.8)
+        max_change = 3  # Keep the original max_change value
         if compound_score > 0:
-            change = min(int((compound_score ** 0.7) * 3), max_change)
+            change = min(int((compound_score ** 0.75) * 3.5), max_change)  # Middle ground between 3 and 4
         else:
-            change = max(int(-((-compound_score) ** 0.7) * 3), -max_change)
+            change = max(int(-((-compound_score) ** 0.75) * 3.5), -max_change)  # Middle ground between 3 and 4
         return change
 
     def trigger_aggression(self, aggressor, target):

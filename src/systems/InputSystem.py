@@ -50,32 +50,23 @@ class InputSystem(System):
             action_taken = True
         return action_taken
 
-    def handle_open_door(self):
+    def handle_door(self, action):
         player = self.game.world.player
-        for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:  # Check adjacent tiles
+        for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
             x, y = int(player.x + dx), int(player.y + dy)
             if self.game.world.game_map.tiles[y][x].tile_type == TileType.DOOR:
                 tile = self.game.world.game_map.tiles[y][x]
-                if not tile.is_open:
+                if (action == 'open' and not tile.is_open) or (action == 'close' and tile.is_open):
                     tile.toggle_door()
                     self.game.world.game_map.initialize_fov()
                     self.game.fov_recompute = True
-                    self.game.message_system.add_message("You open the door.", MessageChannel.SYSTEM)
+                    self.game.message_system.add_message(f"You {action} the door.", MessageChannel.SYSTEM)
                     return True
-        self.game.message_system.add_message("There is no door to open.", MessageChannel.SYSTEM)
+        self.game.message_system.add_message(f"There is no {'door to open' if action == 'open' else 'open door to close'}.", MessageChannel.SYSTEM)
         return False
 
+    def handle_open_door(self):
+        return self.handle_door('open')
+
     def handle_close_door(self):
-        player = self.game.world.player
-        for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:  # Check adjacent tiles
-            x, y = int(player.x + dx), int(player.y + dy)
-            if self.game.world.game_map.tiles[y][x].tile_type == TileType.DOOR:
-                tile = self.game.world.game_map.tiles[y][x]
-                if tile.is_open:
-                    tile.toggle_door()
-                    self.game.world.game_map.initialize_fov()  # Recompute FOV
-                    self.game.fov_recompute = True
-                    self.game.message_system.add_message("You close the door.", MessageChannel.SYSTEM)
-                    return True
-        self.game.message_system.add_message("There is no open door to close.", MessageChannel.SYSTEM)
-        return False
+        return self.handle_door('close')

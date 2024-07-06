@@ -56,9 +56,12 @@ class Map:
         self.width = width
         self.height = height
         self.map_type = map_type
-        self.tiles = [[Tile(TileType.WALL) for _ in range(width)] for _ in range(height)]
-        self.rooms = []
+        self.initialize_map()
         self.fov_map = None
+
+    def initialize_map(self):
+        self.rooms = []
+        self.tiles = [[Tile(TileType.WALL) for _ in range(self.width)] for _ in range(self.height)]
 
     def split_node(self, node, min_size, remaining_rooms):
         if remaining_rooms <= 0 or node.width <= min_size * 2 or node.height <= min_size * 2:
@@ -267,7 +270,7 @@ class Map:
             self.generate_cave()
 
     def generate_dungeon(self, num_rooms, min_size, max_size):
-        self.rooms = []
+        self.initialize_map()
         root = BSPNode(1, 1, self.width - 2, self.height - 2)
         self.split_node(root, min_size, num_rooms)
         
@@ -278,6 +281,8 @@ class Map:
         self.initialize_fov()
 
     def generate_cave(self):
+        self.initialize_map()
+        
         # Initialize the cave with random walls, keeping borders solid
         cave = [[1 if x == 0 or x == self.width - 1 or y == 0 or y == self.height - 1 else
                  (1 if random.random() < 0.45 else 0)
