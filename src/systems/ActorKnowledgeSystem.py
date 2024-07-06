@@ -21,19 +21,18 @@ class ActorKnowledgeSystem(System):
     def update(self, entities, game_map):
         self.update_actor_knowledge(entities, game_map)
         
-        # Add this new block for direction logging
-        player = next((entity for entity in entities if isinstance(entity, Player)), None)
-        if player:
-            self.logger.debug("Actor directions relative to player:")
-            for entity in entities:
-                if isinstance(entity, Actor) and entity != player:
-                    direction = self.get_direction(player, entity)
-                    self.logger.debug(f"{entity.name} is {direction} of the player")
-            
-            # Add this block to log directions of defeated entities
-            for name, position in self.defeated_entity_positions.items():
-                direction = self.get_direction(player, name)
-                self.logger.debug(f"{name} (defeated) is {direction} of the player")
+        for actor in entities:
+            if isinstance(actor, Actor):
+                self.logger.debug(f"Actor directions relative to {actor.name}:")
+                for other_entity in entities:
+                    if isinstance(other_entity, Actor) and other_entity != actor:
+                        direction = self.get_direction(actor, other_entity)
+                        self.logger.debug(f"{other_entity.name} is {direction} of {actor.name}")
+                
+                # Log directions of defeated entities
+                for name, position in self.defeated_entity_positions.items():
+                    direction = self.get_direction(actor, name)
+                    self.logger.debug(f"{name} (defeated) is {direction} of {actor.name}")
 
     def generate_initial_relationships(self, entities):
         if not self.relationships_generated and not self.game.disable_dialogue_system:
