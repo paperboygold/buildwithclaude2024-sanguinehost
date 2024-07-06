@@ -1,9 +1,11 @@
 from ecs.ecs import System
-from components.ActorComponent import ActorComponent
+from components.ActorComponent import ActorComponent, ActorState
+from components.FighterComponent import FighterComponent
 from entities.Actor import Actor
 import random
 import logging
 import traceback
+import math
 
 class ActorKnowledgeSystem(System):
     def __init__(self, game):
@@ -11,23 +13,60 @@ class ActorKnowledgeSystem(System):
         self.logger = logging.getLogger(__name__)
         self.relationships_generated = False
 
-    def update(self, entities):
-        self.update_actor_knowledge(entities)
+    def update(self, entities, game_map):
+        self.update_actor_knowledge(entities, game_map)
 
     def generate_initial_relationships(self, entities):
         if not self.relationships_generated and not self.game.disable_dialogue_system:
             self.generate_actor_relationships(entities)
             self.relationships_generated = True
 
-    def update_actor_knowledge(self, entities):
-        for actor in [entity for entity in entities if isinstance(entity, Actor)]:
-            for other_actor in [e for e in entities if isinstance(e, Actor) and e != actor]:
-                if self.game.world.game_map.is_in_fov(int(actor.x), int(actor.y)) and self.game.world.game_map.is_in_fov(int(other_actor.x), int(other_actor.y)):
-                    actor.knowledge.add_actor(other_actor.name)
-            
-            current_room = next((room for room in self.game.world.game_map.rooms if room.x <= actor.x < room.x + room.width and room.y <= actor.y < room.y + room.height), None)
+    def update_actor_knowledge(self, entities, game_map):
+        alive_actors = [entity for entity in entities if isinstance(entity, Actor)]
+        
+        for actor in alive_actors:
+            for other_actor in entities:
+                if isinstance(other_actor, Actor):
+                    known_info = actor.knowledge.get_actor_info(other_actor.name)
+                    is_dead = other_actor.get_component(FighterComponent).is_dead() or known_info.get('is_dead', False)
+                    
+                    if other_actor != actor:
+                        if game_map.is_in_fov(int(actor.x), int(actor.y)) and game_map.is_in_fov(int(other_actor.x), int(other_actor.y)):
+                            is_aggressive = other_actor.get_component(ActorComponent).state == ActorState.AGGRESSIVE
+                            is_targeting = other_actor.get_component(ActorComponent).target == actor
+                            last_seen_position = (other_actor.x, other_actor.y)
+                            proximity = ((actor.x - other_actor.x) ** 2 + (actor.y - other_actor.y) ** 2) ** 0.5
+                            direction = self.get_direction(actor, other_actor)
+                        else:
+                            is_aggressive = known_info.get('is_aggressive', False)
+                            is_targeting = known_info.get('is_targeting', False)
+                            last_seen_position = known_info.get('last_seen_position', (None, None))
+                            proximity = known_info.get('proximity', None)
+                            direction = known_info.get('direction', None)
+
+                        actor.knowledge.update_actor_info(
+                            other_actor.name,
+                            entity=other_actor,
+                            is_aggressive=is_aggressive,
+                            is_targeting=is_targeting,
+                            last_seen_position=last_seen_position,
+                            proximity=proximity,
+                            direction=direction,
+                            is_dead=is_dead
+                        )
+
+            current_room = next((room for room in game_map.rooms if room.x <= actor.x < room.x + room.width and room.y <= actor.y < room.y + room.height), None)
             if current_room:
                 actor.knowledge.add_location(f"Room at ({current_room.x}, {current_room.y})")
+
+    def get_direction(self, actor1, actor2):
+        dx = actor2.x - actor1.x
+        dy = actor2.y - actor1.y
+        angle = math.atan2(dy, dx)
+        
+        directions = ["east", "northeast", "north", "northwest", "west", "southwest", "south", "southeast"]
+        index = round(4 * angle / math.pi) % 8
+        return directions[index]
 
     def generate_actor_relationships(self, entities):
         actor_entities = [entity for entity in entities if isinstance(entity, Actor)]

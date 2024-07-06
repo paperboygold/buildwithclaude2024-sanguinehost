@@ -124,11 +124,13 @@ You may reference your recent combat experiences if relevant to the conversation
                     return
 
             relationship_info = actor1.knowledge.get_relationship_story(actor2.name) or ""
-             
+            actor2_info = actor1.knowledge.known_actors.get(actor2.name, {})
+            
             system_prompt = f"""You are simulating a conversation between {actor1.name} and {actor2.name} in a dungeon setting.
 {actor1.name}'s character: {actor1_component.character_card}
 {actor2.name}'s character: {actor2_component.character_card}
 Their relationship: {relationship_info}
+{actor1.name}'s knowledge of {actor2.name}: Aggressive: {actor2_info.get('is_aggressive', False)}, Targeting: {actor2_info.get('is_targeting', False)}, Last seen: {actor2_info.get('last_seen_position', 'Unknown')}, Proximity: {actor2_info.get('proximity', 'Unknown')}
 Environmental knowledge: {actor1.knowledge.get_summary()}
 Keep responses brief and in character, typically 1-2 short sentences or 10-15 words. Be concise and direct.
 Important: Speak only in dialogue. Do not describe actions, appearances, use asterisks or quotation marks. Simply respond with what the character would say."""
@@ -189,12 +191,13 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
             actor1_component = actor1.get_component(ActorComponent)
             actor2_component = actor2.get_component(ActorComponent)
             
-            system_prompt = f"""Summarize a brief conversation between {actor1.name} and {actor2.name} in a dungeon setting.
+            system_prompt = f"""Summarize a brief, unique conversation between {actor1.name} and {actor2.name} in a dungeon setting.
             {actor1.name}'s character: {actor1_component.character_card}
             {actor2.name}'s character: {actor2_component.character_card}
             Their relationship: {actor1.knowledge.get_relationship_story(actor2.name) or ""}
             Environmental knowledge: {actor1.knowledge.get_summary()}
-            Provide a single sentence summary of their conversation, focusing on the main topic or outcome."""
+            Provide a single sentence summary of their conversation, focusing on a specific topic or outcome.
+            Make sure the summary is different from previous conversations."""
 
             request_body = {
                 "model": "claude-3-5-sonnet-20240620",

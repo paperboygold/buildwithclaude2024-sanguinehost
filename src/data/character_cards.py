@@ -46,7 +46,10 @@ character_cards = {
 def get_character_card(key, default=None):
     if isinstance(key, dict):
         return key
-    return character_cards.get(key, default)
+    card = character_cards.get(key, default)
+    if card and hasattr(card, 'get'):
+        card['current_position'] = f"({card.get('x', '?')}, {card.get('y', '?')})"
+    return card
 
 def set_character_card(key, value):
     character_cards[key] = value

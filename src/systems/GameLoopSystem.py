@@ -2,6 +2,7 @@ import random
 import tcod
 from components.ActorComponent import ActorComponent
 from systems.MessageSystem import MessageChannel
+from entities.Actor import Actor
 
 class GameLoopSystem:
     def __init__(self, game):
@@ -37,7 +38,7 @@ class GameLoopSystem:
 
     def update_game_state(self):
         self.game.logger.debug("Updating actor knowledge and positions")
-        self.game.world.actor_knowledge_system.update(self.game.world.entities)
+        self.game.world.actor_knowledge_system.update(self.game.world.entities, self.game.world.game_map)
         self.game.world.update_actors()
 
     def handle_actor_interactions(self):

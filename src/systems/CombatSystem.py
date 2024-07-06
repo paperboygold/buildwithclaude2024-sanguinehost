@@ -129,18 +129,28 @@ class CombatSystem(System):
                     if isinstance(entity, Actor) and entity.aggression_type == "hostile":
                         self.logger.debug(f"{entity.name} is reassessing hostility after defeat of {target.name}")
                         entity.reassess_hostility(self.game, target)
-        
-        self.clear_aggressor(target)
-        self.logger.debug(f"Aggressor cleared for defeated entity: {target.name}")
-        self.end_combat(target)
-        # Reset state for all entities that were targeting the defeated entity
-        for entity in self.game.world.entities:
-            if isinstance(entity, Actor):
-                actor_component = entity.get_component(ActorComponent)
-                if actor_component.target == target:
-                    actor_component.target = None
-                    actor_component.state = ActorState.IDLE
-                    self.logger.info(f"{entity.name} lost its target and returned to IDLE state")
+            
+            # Update knowledge for all actors
+            for entity in self.game.world.entities:
+                if isinstance(entity, Actor):
+                    entity.knowledge.update_actor_info(
+                        target.name,
+                        is_dead=True,
+                        last_seen_position=(target.x, target.y)
+                    )
+                    self.logger.debug(f"Updated {entity.name}'s knowledge about {target.name}'s defeat")
+            
+            self.clear_aggressor(target)
+            self.logger.debug(f"Aggressor cleared for defeated entity: {target.name}")
+            self.end_combat(target)
+            # Reset state for all entities that were targeting the defeated entity
+            for entity in self.game.world.entities:
+                if isinstance(entity, Actor):
+                    actor_component = entity.get_component(ActorComponent)
+                    if actor_component.target == target:
+                        actor_component.target = None
+                        actor_component.state = ActorState.IDLE
+                        self.logger.info(f"{entity.name} lost its target and returned to IDLE state")
 
     def clear_defeated_entity_as_target(self, defeated_entity):
         for entity in self.game.world.entities:
