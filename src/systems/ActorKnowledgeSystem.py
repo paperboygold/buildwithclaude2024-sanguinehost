@@ -18,6 +18,17 @@ class ActorKnowledgeSystem(System):
         self.async_client = AsyncAnthropic(api_key=game.anthropic_client.api_key)
         self.defeated_entity_positions = {}  # New attribute
 
+    def initialize(self):
+        self.initialize_relationships(self.game.world.entities)
+
+    def initialize_relationships(self, entities):
+        for entity in entities:
+            if isinstance(entity, Actor):
+                for other_entity in entities:
+                    if isinstance(other_entity, Actor) and other_entity != entity:
+                        if other_entity.name not in entity.knowledge.relationships:
+                            entity.knowledge.relationships[other_entity.name] = 0
+
     def update(self, entities, game_map):
         self.update_actor_knowledge(entities, game_map)
         

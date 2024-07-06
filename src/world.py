@@ -53,3 +53,6 @@ class World:
         actor.add_component(actor_component)
         self.entities.append(actor)
         return actor
+
+    def initialize_systems(self):
+        self.actor_knowledge_system.initialize()

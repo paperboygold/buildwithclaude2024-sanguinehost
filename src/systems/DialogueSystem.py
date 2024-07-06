@@ -531,16 +531,17 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
             listener_component.emotional_intensity = max(0.0, listener_component.emotional_intensity - 0.1)
         
         # Update relationship
-        listener_knowledge = listener.get_component(KnowledgeComponent)
         relationship_change = sentiment * 5  # Adjust this multiplier as needed
-        listener_knowledge.update_relationship(speaker.name, relationship_change)
+        listener.knowledge.update_relationship(speaker.name, relationship_change)
+        speaker.knowledge.update_relationship(listener.name, relationship_change)
         
-        self.logger.info(f"{listener.name}'s relationship with {speaker.name} changed by {relationship_change}")
-        self.logger.info(f"{listener.name}'s current emotional state: {listener_component.emotional_state}, intensity: {listener_component.emotional_intensity}")
+        new_relationship_value = listener.knowledge.relationships[speaker.name]
+        self.logger.info(f"{listener.name}'s relationship with {speaker.name} changed by {relationship_change}. New value: {new_relationship_value}")
+        self.game.show_message(f"{listener.name}'s relationship with {speaker.name} is now {new_relationship_value}", MessageChannel.SYSTEM)
         
         # Check for aggression trigger
         if listener_component.emotional_state == EmotionalState.ANGRY and listener_component.emotional_intensity > 0.7:
-            if listener_knowledge.relationships[speaker.name] < -50:
+            if listener.knowledge.relationships[speaker.name] < -50:
                 self.trigger_aggression(listener, speaker)
 
     def trigger_aggression(self, aggressor, target):

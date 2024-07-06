@@ -98,6 +98,7 @@ class Game:
         
         # Create a new world
         self.world = World(80, 38, self, MapType.DUNGEON, single_room=single_room)
+        self.world.initialize_systems()
         self.setup_world(self.world)
         
         # Create and add the player
