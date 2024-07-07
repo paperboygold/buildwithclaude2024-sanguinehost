@@ -27,9 +27,22 @@ class DialogueSystem:
             self.logger.info(f"Starting dialogue with {actor.name}")
             self.logger.debug(f"Actor {actor.name} character card: {actor_card}")
             self.logger.debug(f"Actor {actor.name} knowledge: {actor.knowledge.get_summary()}")
+
+            # Check if the actor is hostile before starting dialogue
+            if actor.is_hostile(self.game.world.player):
+                self.game.show_message(f"{actor.name} is hostile and refuses to talk!", MessageChannel.DIALOGUE)
+                return
+
             self.game.show_message(f"You are now talking to {actor.name}", MessageChannel.DIALOGUE, sender=actor)
             
+            total_relationship_change = 0
+            
             while True:
+                # Check if the actor has become hostile during the conversation
+                if actor.is_hostile(self.game.world.player):
+                    self.game.show_message(f"{actor.name} becomes hostile and ends the conversation!", MessageChannel.DIALOGUE)
+                    break
+
                 user_input = self.get_user_input("You: ")
                 if user_input is None:  # User pressed Escape
                     self.logger.info(f"Dialogue with {actor.name} ended by user")
@@ -41,8 +54,8 @@ class DialogueSystem:
             
                 actor_component.dialogue_history.append({"role": "user", "content": user_input})
                 
-                # Process player's dialogue and get relationship change
-                relationship_change = self.process_dialogue(self.game.world.player, actor, user_input)
+                # Process player's dialogue and get sentiment and relationship change
+                player_sentiment, player_relationship_change = self.process_dialogue(self.game.world.player, actor, user_input)
                 
                 try:
                     relationship_info = ""
@@ -55,21 +68,21 @@ class DialogueSystem:
 
                     # Add relationship change to the system prompt
                     relationship_info += f"Recent interaction impact:\n"
-                    if abs(relationship_change) < 0.1:
+                    if abs(player_relationship_change) < 0.1:
                         impact = "Negligible"
-                    elif abs(relationship_change) < 0.3:
+                    elif abs(player_relationship_change) < 0.3:
                         impact = "Slight"
-                    elif abs(relationship_change) < 0.6:
+                    elif abs(player_relationship_change) < 0.6:
                         impact = "Moderate"
                     else:
                         impact = "Significant"
                     
                     relationship_info += f"- Magnitude: {impact}\n"
-                    relationship_info += f"- Direction: {'Positive' if relationship_change >= 0 else 'Negative'}\n"
+                    relationship_info += f"- Direction: {'Positive' if player_relationship_change >= 0 else 'Negative'}\n"
                     
-                    if relationship_change < -0.2:
+                    if player_relationship_change < -0.2:
                         relationship_info += "- Emotional response: You are somewhat displeased by their words.\n"
-                    elif relationship_change > 0.2:
+                    elif player_relationship_change > 0.2:
                         relationship_info += "- Emotional response: You are somewhat pleased by their words.\n"
                     else:
                         relationship_info += "- Emotional response: You feel neutral about their words.\n"
@@ -109,14 +122,37 @@ You may reference your recent combat experiences if relevant to the conversation
                     self.show_dialogue(actor, actor_response)
                     
                     # Process NPC's dialogue
-                    self.process_dialogue(actor, self.game.world.player, actor_response)
+                    npc_sentiment, npc_relationship_change = self.process_dialogue(actor, self.game.world.player, actor_response)
+                    
+                    # Accumulate the relationship change
+                    total_relationship_change += (player_relationship_change + npc_relationship_change) / 2
+                    
+                    # Apply the accumulated relationship change
+                    current_relationship = actor.knowledge.relationships.get(self.game.world.player.name, {"type": "stranger", "value": 0})
+                    relationship_value = current_relationship["value"]
+                    new_relationship_value = max(-100, min(100, relationship_value + total_relationship_change))
+                    
+                    # Update relationship type based on thresholds
+                    if new_relationship_value <= -50:
+                        new_relationship_type = "enemy"
+                    elif new_relationship_value < 20:
+                        new_relationship_type = "neutral"
+                    else:
+                        new_relationship_type = "friend"
+                    
+                    # Update the relationship
+                    actor.knowledge.update_relationship(self.game.world.player.name, new_relationship_type, new_relationship_value)
+                    self.game.world.player.knowledge.update_relationship(actor.name, new_relationship_type, new_relationship_value)
+                    
+                    # Log relationship change
+                    self.logger.debug(f"{actor.name}'s relationship with {self.game.world.player.name} changed by {total_relationship_change:.2f}. New value: {new_relationship_value:.2f}")
                     
                     # Display current relationship status
-                    relationship_value = round(actor.knowledge.relationships.get(self.game.world.player.name, 0), 1)
+                    relationship_value = round(actor.knowledge.relationships.get(self.game.world.player.name, {"type": "stranger", "value": 0})["value"], 1)
                     self.game.show_message(f"Current relationship with {actor.name}: {relationship_value}", MessageChannel.SYSTEM)
                     
                     # Check if the dialogue should end due to aggression
-                    if actor_component.state == ActorState.AGGRESSIVE:
+                    if actor.is_hostile(self.game.world.player) and actor.get_recent_combat_memory():
                         self.game.show_message(f"{actor.name} becomes hostile and ends the conversation!", MessageChannel.DIALOGUE)
                         break
                 except Exception as e:
@@ -124,14 +160,16 @@ You may reference your recent combat experiences if relevant to the conversation
                     self.logger.debug(traceback.format_exc())
                     self.game.show_message(f"Error: Unable to get NPC response", MessageChannel.SYSTEM, (255, 0, 0))
 
-            # Summarize the conversation
+            # Summarize the conversation only if there were any messages
             if actor_component.dialogue_history:
                 summary = self.summarize_full_conversation(self.game.world.player, actor, actor_component.dialogue_history)
                 self.add_conversation_memory(self.game.world.player, actor, summary)
                 self.logger.info(f"Conversation summary between Player and {actor.name}: {summary}")
 
-            # Apply the final relationship adjustment based on the conversation summary
-            self.adjust_relationship_from_summary(self.game.world.player, actor, summary)
+                # Apply the final relationship adjustment based on the conversation summary
+                self.adjust_relationship_from_summary(self.game.world.player, actor, actor_component.dialogue_history, summary)
+            else:
+                self.logger.info(f"Dialogue with {actor.name} ended without any messages exchanged.")
 
             # Clear the dialogue history
             actor_component.dialogue_history = []
@@ -174,18 +212,18 @@ You may reference your recent combat experiences if relevant to the conversation
                     if choice:
                         self.game.show_message(f"{actor1.name} and {actor2.name} have started a conversation.", MessageChannel.DIALOGUE, sender=actor1)
                     else:
-                        summary = self.summarize_conversation(actor1, actor2)
+                        summary, conversation_history = self.summarize_conversation(actor1, actor2)
                         if summary:  # Check if summary is not None
                             self.add_conversation_memory(actor1, actor2, summary)
-                            self.adjust_relationship_from_summary(actor1, actor2, summary)
+                            self.adjust_relationship_from_summary(actor1, actor2, conversation_history, summary)
                         else:
                             self.logger.error(f"Failed to generate summary for conversation between {actor1.name} and {actor2.name}")
                         return
                 else:
-                    summary = self.summarize_conversation(actor1, actor2)
+                    summary, conversation_history = self.summarize_conversation(actor1, actor2)
                     if summary:  # Check if summary is not None
                         self.add_conversation_memory(actor1, actor2, summary)
-                        self.adjust_relationship_from_summary(actor1, actor2, summary)
+                        self.adjust_relationship_from_summary(actor1, actor2, conversation_history, summary)
                     else:
                         self.logger.error(f"Failed to generate summary for conversation between {actor1.name} and {actor2.name}")
                     return
@@ -299,15 +337,19 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
 
             if summary:
                 self.game.show_message(summary, MessageChannel.DIALOGUE)
-                return summary
+                conversation_history = [
+                    {"role": "system", "content": "A simulated conversation occurred."},
+                    {"role": "assistant", "content": summary}
+                ]
+                return summary, conversation_history
             else:
                 self.logger.error("Failed to generate conversation summary: Empty response")
-                return None
+                return None, None
 
         except Exception as e:
             self.logger.error(f"Error in summarizing conversation: {str(e)}")
             self.logger.debug(traceback.format_exc())
-            return None
+            return None, None
 
     def get_player_choice(self, prompt):
         self.game.show_message(prompt, MessageChannel.SYSTEM, (255, 255, 0))
@@ -410,7 +452,7 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
         self.end_actor_conversation(actor1, actor2)
         summary = self.generate_conversation_summary(actor1, actor2, conversation_history)
         self.add_conversation_memory(actor1, actor2, summary)
-        self.adjust_relationship_from_summary(actor1, actor2, summary)
+        self.adjust_relationship_from_summary(actor1, actor2, conversation_history, summary)
         self.logger.info(f"Conversation ended between {actor1.name} and {actor2.name}. Summary: {summary}")
         return summary
 
@@ -573,52 +615,21 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
         # Calculate the average sentiment
         avg_sentiment = sum(listener_component.sentiment_history) / len(listener_component.sentiment_history)
 
-        # Adjust the relationship change based on the average sentiment
-        if avg_sentiment < -0.5:
-            relationship_change = -0.1
-        elif avg_sentiment < -0.2:
-            relationship_change = -0.05
-        elif avg_sentiment < 0.2:
-            relationship_change = 0
-        elif avg_sentiment < 0.5:
-            relationship_change = 0.05
-        else:
-            relationship_change = 0.1
-
-        # Apply a context modifier
+        # Calculate the relationship change
+        relationship_change = round(avg_sentiment * 2, 1)
+        relationship_change = max(-3, min(3, relationship_change))
+        
+        # Apply context modifier
         context_modifier = 1.0
         if "apology" in dialogue.lower() or "sorry" in dialogue.lower():
-            context_modifier = 0.5  # Reduce negative impact for apologies
+            context_modifier = 1.5
         elif "thank" in dialogue.lower() or "appreciate" in dialogue.lower():
-            context_modifier = 1.5  # Increase positive impact for gratitude
-
-        relationship_change *= context_modifier
-
-        # Update emotional state with increased sensitivity to negative interactions
-        if compound_score > 0.1:
-            listener_component.emotional_state = EmotionalState.HAPPY
-            listener_component.emotional_intensity = min(1.0, listener_component.emotional_intensity + abs(compound_score) * 0.2)
-        elif compound_score < -0.05:  # Lowered threshold for negative emotions
-            listener_component.emotional_state = EmotionalState.ANGRY
-            listener_component.emotional_intensity = min(1.0, listener_component.emotional_intensity + abs(compound_score) * 0.3)  # Increased intensity for negative emotions
-        else:
-            listener_component.emotional_intensity = max(0.0, listener_component.emotional_intensity - 0.05)
-
-        # Update relationship
-        listener.knowledge.update_relationship(speaker.name, relationship_change)
-        speaker.knowledge.update_relationship(listener.name, relationship_change)
-
-        # Check for aggression trigger with lower threshold
-        if listener_component.emotional_state == EmotionalState.ANGRY and listener_component.emotional_intensity > 0.6:  # Lowered from 0.8
-            if listener.knowledge.relationships[speaker.name] < -10:  # Lowered from -15
-                self.trigger_aggression(listener, speaker)
-
-        # Log relationship change (for debugging purposes)
-        new_relationship_value = listener.knowledge.relationships[speaker.name]
-        self.logger.debug(f"{listener.name}'s relationship with {speaker.name} changed by {relationship_change:.2f}. New value: {new_relationship_value:.2f}")
-
-        # Return the relationship change for use in dialogue generation
-        return relationship_change
+            context_modifier = 1.5
+        
+        relationship_change = relationship_change * context_modifier
+        
+        # Return the sentiment score and relationship change without applying it
+        return avg_sentiment, relationship_change
 
     def map_sentiment_to_relationship(self, sentiment):
         max_change = 2  # Reduced max change for more gradual relationship shifts
@@ -642,46 +653,73 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
             self.logger.info(f"{actor.name} attempted to calm {target.name}")
             self.game.show_message(f"{actor.name} successfully calms down {target.name}.", MessageChannel.DIALOGUE)
 
-    def adjust_relationship_from_summary(self, actor1, actor2, summary):
+    def adjust_relationship_from_summary(self, actor1, actor2, conversation_history, summary):
         sentiment_analyzer = SentimentIntensityAnalyzer()
-        sentiment_scores = sentiment_analyzer.polarity_scores(summary)
-        compound_score = sentiment_scores['compound']
-
+        
+        # Analyze sentiment of the entire conversation
+        full_conversation_text = " ".join([message["content"] for message in conversation_history])
+        conversation_sentiment = sentiment_analyzer.polarity_scores(full_conversation_text)["compound"]
+        
+        # Analyze sentiment of the summary
+        summary_sentiment = sentiment_analyzer.polarity_scores(summary)["compound"]
+        
+        # Combine sentiments with summary having slightly more weight
+        combined_sentiment = (conversation_sentiment + 2 * summary_sentiment) / 3
+        
         # Map the sentiment score to a relationship change
-        relationship_change = round(compound_score * 0.2, 1)  # Increased impact for overall conversation
-
-        # Log initial relationship values
-        initial_relationship1 = round(actor1.knowledge.relationships.get(actor2.name, 0), 1)
-        initial_relationship2 = round(actor2.knowledge.relationships.get(actor1.name, 0), 1)
-        self.logger.info(f"Initial relationship values - {actor1.name} to {actor2.name}: {initial_relationship1}, {actor2.name} to {actor1.name}: {initial_relationship2}")
-
-        # Update relationships for both actors
-        actor1.knowledge.update_relationship(actor2.name, relationship_change)
-        actor2.knowledge.update_relationship(actor1.name, relationship_change)
-
-        # Log new relationship values
-        new_relationship1 = round(actor1.knowledge.relationships.get(actor2.name, 0), 1)
-        new_relationship2 = round(actor2.knowledge.relationships.get(actor1.name, 0), 1)
-        self.logger.info(f"Relationship between {actor1.name} and {actor2.name} changed by {relationship_change:.1f} based on conversation summary")
-        self.logger.info(f"New relationship values - {actor1.name} to {actor2.name}: {new_relationship1:.1f}, {actor2.name} to {actor1.name}: {new_relationship2:.1f}")
-
+        relationship_change = round(combined_sentiment * 2, 1)
+        
+        # Get current relationship values
+        relationship1 = actor1.knowledge.relationships.get(actor2.name, {"type": "stranger", "value": 0})
+        relationship2 = actor2.knowledge.relationships.get(actor1.name, {"type": "stranger", "value": 0})
+        
+        # Update relationship values
+        new_value1 = max(-100, min(100, relationship1["value"] + relationship_change))
+        new_value2 = max(-100, min(100, relationship2["value"] + relationship_change))
+        
+        # Determine new relationship types
+        def get_relationship_type(value):
+            if value <= -50:
+                return "enemy"
+            elif value < 20:
+                return "neutral"
+            else:
+                return "friend"
+        
+        new_type1 = get_relationship_type(new_value1)
+        new_type2 = get_relationship_type(new_value2)
+        
+        # Update relationships
+        actor1.knowledge.update_relationship(actor2.name, new_type1, new_value1)
+        actor2.knowledge.update_relationship(actor1.name, new_type2, new_value2)
+        
+        # Log relationship changes
+        self.logger.info(f"Relationship between {actor1.name} and {actor2.name} changed by {relationship_change:.2f} based on conversation summary")
+        self.logger.info(f"New relationship values - {actor1.name} to {actor2.name}: {new_value1:.2f} ({new_type1}), {actor2.name} to {actor1.name}: {new_value2:.2f} ({new_type2})")
+        
         # Categorize the conversation based on the relationship change
-        if relationship_change <= -0.2:
+        if relationship_change <= -5:
             conversation_quality = "terrible"
             message = f"The conversation between {actor1.name} and {actor2.name} was {conversation_quality}, severely damaging their relationship."
-        elif -0.1 <= relationship_change < 0:
+        elif relationship_change <= -2:
             conversation_quality = "bad"
             message = f"The conversation between {actor1.name} and {actor2.name} was {conversation_quality}, negatively affecting their relationship."
+        elif relationship_change < 0:
+            conversation_quality = "somewhat negative"
+            message = f"The conversation between {actor1.name} and {actor2.name} was {conversation_quality}, slightly worsening their relationship."
         elif relationship_change == 0:
-            conversation_quality = "average"
+            conversation_quality = "neutral"
             message = f"The conversation between {actor1.name} and {actor2.name} was {conversation_quality}, with no significant impact on their relationship."
-        elif 0 < relationship_change <= 0.1:
+        elif relationship_change < 2:
+            conversation_quality = "somewhat positive"
+            message = f"The conversation between {actor1.name} and {actor2.name} was {conversation_quality}, slightly improving their relationship."
+        elif relationship_change < 5:
             conversation_quality = "good"
             message = f"The conversation between {actor1.name} and {actor2.name} was {conversation_quality}, positively affecting their relationship."
-        else:  # relationship_change >= 0.2
+        else:
             conversation_quality = "great"
             message = f"The conversation between {actor1.name} and {actor2.name} was {conversation_quality}, significantly improving their relationship."
-
+        
         # Show the categorized relationship change in the message log
         self.game.show_message(message, MessageChannel.SYSTEM)
 

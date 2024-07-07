@@ -27,7 +27,7 @@ class ActorKnowledgeSystem(System):
                 for other_entity in entities:
                     if isinstance(other_entity, Actor) and other_entity != entity:
                         if other_entity.name not in entity.knowledge.relationships:
-                            entity.knowledge.relationships[other_entity.name] = 0
+                            entity.knowledge.relationships[other_entity.name] = {"type": "stranger", "value": 0}
 
     def update(self, entities, game_map):
         self.update_actor_knowledge(entities, game_map)
@@ -115,25 +115,24 @@ class ActorKnowledgeSystem(System):
         tasks = []
         for i, actor1 in enumerate(actor_entities):
             for actor2 in actor_entities[i+1:]:
-                relationship_type = "stranger"
-                if random.random() < 0.5:  # 50% chance of a non-stranger relationship
-                    relationship_type = random.choice([
-                        "friend", "rival", "mentor", "student", "ally", "enemy",
-                        "acquaintance", "family", "colleague"
-                    ])
-                tasks.append(self.generate_relationship_story(actor1, actor2, relationship_type))
+                relationship_type = random.choice([
+                    "stranger", "friend", "rival", "mentor", "student", "ally", "enemy",
+                    "acquaintance", "family", "colleague"
+                ])
+                initial_value = random.randint(-10, 10)  # Initial relationship value
+                tasks.append(self.generate_relationship_story(actor1, actor2, relationship_type, initial_value))
         
         results = await asyncio.gather(*tasks)
         
         for result in results:
-            actor1, actor2, relationship_type, relationship_story = result
-            actor1.knowledge.add_actor(actor2.name, relationship_type, relationship_story)
-            actor2.knowledge.add_actor(actor1.name, relationship_type, relationship_story)
+            actor1, actor2, relationship_type, relationship_value, relationship_story = result
+            actor1.knowledge.add_actor(actor2.name, relationship_type, relationship_value, relationship_story)
+            actor2.knowledge.add_actor(actor1.name, relationship_type, relationship_value, relationship_story)
 
-    async def generate_relationship_story(self, actor1, actor2, relationship_type):
+    async def generate_relationship_story(self, actor1, actor2, relationship_type, initial_value):
         actor1_component = actor1.get_component(ActorComponent)
         actor2_component = actor2.get_component(ActorComponent)
-        prompt = f"Generate a very brief story (1-2 sentences) about the {relationship_type} relationship between {actor1.name} and {actor2.name}. {actor1.name}'s character: {actor1_component.character_card}. {actor2.name}'s character: {actor2_component.character_card}."
+        prompt = f"Generate a very brief story (1-2 sentences) about the {relationship_type} relationship between {actor1.name} and {actor2.name}. Their initial relationship value is {initial_value} (range: -100 to 100, where negative is unfavorable and positive is favorable). {actor1.name}'s character: {actor1_component.character_card}. {actor2.name}'s character: {actor2_component.character_card}."
         
         self.logger.info(f"Generating relationship story for {actor1.name} and {actor2.name}")
         self.logger.debug(f"Relationship story prompt: {prompt}")
@@ -147,8 +146,8 @@ class ActorKnowledgeSystem(System):
             )
             story = response.content[0].text.strip()
             self.logger.info(f"Generated relationship story: {story}")
-            return actor1, actor2, relationship_type, story
+            return actor1, actor2, relationship_type, initial_value, story
         except Exception as e:
             self.logger.error(f"Error generating relationship story: {str(e)}")
             self.logger.debug(traceback.format_exc())
-            return actor1, actor2, relationship_type, f"{actor1.name} and {actor2.name} have a {relationship_type} relationship."
+            return actor1, actor2, relationship_type, initial_value, f"{actor1.name} and {actor2.name} have a {relationship_type} relationship."

@@ -89,6 +89,11 @@ class Game:
         elif not color:
             color = (255, 255, 255)
         self.message_system.add_message(text, channel, color)
+        
+        # Log the message
+        log_level = logging.INFO if channel == MessageChannel.SYSTEM else logging.DEBUG
+        self.logger.log(log_level, f"{channel.name}: {text}")
+        
         if hasattr(self, 'render_system') and self.render_system and self.world and self.world.game_map:
             self.render_system.render()
         else:

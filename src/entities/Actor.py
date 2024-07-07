@@ -321,3 +321,7 @@ class Actor(Entity):
                 game.logger.debug(f"{self.name} couldn't find a path to the target")
         else:
             game.logger.debug(f"{self.name} couldn't find a path to the target")
+
+    def is_hostile(self, target):
+        actor_component = self.get_component(ActorComponent)
+        return target in actor_component.hostile_towards or self.aggression_type == "hostile"

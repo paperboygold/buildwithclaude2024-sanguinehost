@@ -8,9 +8,9 @@ class KnowledgeComponent(Component):
         self.combat_memories = []
         self.relationships = {}
 
-    def add_actor(self, actor_name, relationship="stranger", relationship_story="", is_aggressive=False, is_targeting=False, last_seen_position=None, proximity=None, direction=None):
+    def add_actor(self, actor_name, relationship_type, initial_value, relationship_story, is_aggressive=False, is_targeting=False, last_seen_position=None, proximity=None, direction=None):
         self.known_actors[actor_name] = {
-            "relationship": relationship,
+            "relationship": relationship_type,
             "story": relationship_story,
             "is_aggressive": is_aggressive,
             "is_targeting": is_targeting,
@@ -18,13 +18,10 @@ class KnowledgeComponent(Component):
             "proximity": proximity,
             "direction": direction,
         }
-        self.relationships[actor_name] = 0  # Initialize relationship value to 0
+        self.relationships[actor_name] = {"type": relationship_type, "value": initial_value}
 
-    def update_relationship(self, actor_name, change):
-        if actor_name not in self.relationships:
-            self.relationships[actor_name] = 0
-        self.relationships[actor_name] += change
-        self.relationships[actor_name] = max(-100, min(100, self.relationships[actor_name]))
+    def update_relationship(self, actor_name, relationship_type, value):
+        self.relationships[actor_name] = {"type": relationship_type, "value": value}
 
     def update_actor_info(self, actor_name, entity=None, is_aggressive=None, is_targeting=None, last_seen_position=None, proximity=None, direction=None, is_dead=None):
         if actor_name not in self.known_actors:
@@ -71,4 +68,3 @@ class KnowledgeComponent(Component):
 
     def get_actor_info(self, actor_name):
         return self.known_actors.get(actor_name, {})
-
