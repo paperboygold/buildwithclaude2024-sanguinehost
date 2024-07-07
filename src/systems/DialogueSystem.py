@@ -8,7 +8,6 @@ import random
 import re
 from systems.MessageSystem import MessageChannel, Message
 from components.ActorComponent import ActorComponent, ActorState, EmotionalState
-from components.KnowledgeComponent import KnowledgeComponent
 from tcod.event import KeySym
 from entities.Actor import Actor
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
@@ -67,7 +66,7 @@ You may reference your recent combat experiences if relevant to the conversation
                         "max_tokens": 50,
                         "messages": actor_component.dialogue_history,
                         "system": system_prompt,
-                        "temperature": 0.7,
+                        "temperature": 0.93,
                         "top_p": 1,
                         "stream": False,
                         "stop_sequences": ["\n\nHuman:", "\n\nSystem:", "\n\nAssistant:"]
@@ -129,15 +128,8 @@ You may reference your recent combat experiences if relevant to the conversation
                current_time - actor2_component.last_conversation_time < actor2_component.conversation_cooldown:
                 return  # Skip if either actor is on cooldown
 
-            # Calculate conversation likelihood
-            actor1_likelihood = actor1.character_card['aggression_type']['conversation_likelihood']
-            actor2_likelihood = actor2.character_card['aggression_type']['conversation_likelihood']
-            combined_likelihood = (actor1_likelihood + actor2_likelihood) / 2
-
-            # Check faction compatibility
-            faction_compatible = self.check_faction_compatibility(actor1, actor2)
-
-            if random.random() < combined_likelihood and faction_compatible:
+            # Calculate conversation likelihood and check faction compatibility
+            if self.should_start_conversation(actor1, actor2):
                 actor1_component.last_conversation_time = current_time
                 actor2_component.last_conversation_time = current_time
 
@@ -153,8 +145,21 @@ You may reference your recent combat experiences if relevant to the conversation
                     if choice:
                         self.game.show_message(f"{actor1.name} and {actor2.name} have started a conversation.", MessageChannel.DIALOGUE, sender=actor1)
                     else:
-                        self.summarize_conversation(actor1, actor2)
+                        summary = self.summarize_conversation(actor1, actor2)
+                        if summary:  # Check if summary is not None
+                            self.add_conversation_memory(actor1, actor2, summary)
+                            self.adjust_relationship_from_summary(actor1, actor2, summary)
+                        else:
+                            self.logger.error(f"Failed to generate summary for conversation between {actor1.name} and {actor2.name}")
                         return
+                else:
+                    summary = self.summarize_conversation(actor1, actor2)
+                    if summary:  # Check if summary is not None
+                        self.add_conversation_memory(actor1, actor2, summary)
+                        self.adjust_relationship_from_summary(actor1, actor2, summary)
+                    else:
+                        self.logger.error(f"Failed to generate summary for conversation between {actor1.name} and {actor2.name}")
+                    return
 
                 relationship_info = actor1.knowledge.get_relationship_story(actor2.name) or ""
                 actor2_info = actor1.knowledge.known_actors.get(actor2.name, {})
@@ -184,7 +189,7 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
                     "max_tokens": 100,
                     "messages": [{"role": "user", "content": actor_prompt}],
                     "system": system_prompt,
-                    "temperature": 0.7
+                    "temperature": 0.93
                 }
                 
                 response = self.anthropic_client.messages.create(**request_body)
@@ -219,6 +224,13 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
             if player_can_see:
                 self.game.show_message(f"An error occurred during actor dialogue", MessageChannel.SYSTEM, (255, 0, 0))
 
+    def should_start_conversation(self, actor1, actor2):
+        actor1_likelihood = actor1.character_card['aggression_type']['conversation_likelihood']
+        actor2_likelihood = actor2.character_card['aggression_type']['conversation_likelihood']
+        combined_likelihood = (actor1_likelihood + actor2_likelihood) / 2
+        faction_compatible = self.check_faction_compatibility(actor1, actor2)
+        return random.random() < combined_likelihood and faction_compatible
+
     def check_faction_compatibility(self, actor1, actor2):
         faction1 = actor1.character_card['faction']
         faction2 = actor2.character_card['faction']
@@ -250,21 +262,23 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
                 "max_tokens": 100,
                 "messages": [{"role": "user", "content": "Summarize the conversation."}],
                 "system": system_prompt,
-                "temperature": 0.9
+                "temperature": 0.97
             }
             
             response = self.anthropic_client.messages.create(**request_body)
-            summary = response.content[0].text if response.content else ""
+            summary = response.content[0].text if response.content else None
 
-            self.game.show_message(summary, MessageChannel.DIALOGUE)
-
-            # Add the summary to both actors' memories
-            self.add_conversation_memory(actor1, actor2, summary)
+            if summary:
+                self.game.show_message(summary, MessageChannel.DIALOGUE)
+                return summary
+            else:
+                self.logger.error("Failed to generate conversation summary: Empty response")
+                return None
 
         except Exception as e:
             self.logger.error(f"Error in summarizing conversation: {str(e)}")
             self.logger.debug(traceback.format_exc())
-            self.game.show_message(f"An error occurred while summarizing the conversation", MessageChannel.SYSTEM, (255, 0, 0))
+            return None
 
     def get_player_choice(self, prompt):
         self.game.show_message(prompt, MessageChannel.SYSTEM, (255, 255, 0))
@@ -367,6 +381,8 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
         self.end_actor_conversation(actor1, actor2)
         summary = self.generate_conversation_summary(actor1, actor2, conversation_history)
         self.add_conversation_memory(actor1, actor2, summary)
+        self.adjust_relationship_from_summary(actor1, actor2, summary)
+        self.logger.info(f"Conversation ended between {actor1.name} and {actor2.name}. Summary: {summary}")
         return summary
 
     def end_actor_conversation(self, actor1, actor2):
@@ -485,7 +501,7 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
                 "max_tokens": 100,
                 "messages": conversation + [{"role": "user", "content": "Summarize the conversation."}],
                 "system": system_prompt,
-                "temperature": 0.7
+                "temperature": 0.93
             }
             
             response = self.anthropic_client.messages.create(**request_body)
@@ -517,7 +533,7 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
         avg_sentiment = sum(listener_component.sentiment_history) / len(listener_component.sentiment_history)
 
         # Apply a threshold to the average sentiment
-        threshold = 0.06  # Middle ground between 0.05 and 0.07
+        threshold = 0.065  # Middle ground between 0.05 and 0.07
         if abs(avg_sentiment) < threshold:
             relationship_change = 0
         else:
@@ -543,16 +559,15 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
 
         # Check for aggression trigger
         if listener_component.emotional_state == EmotionalState.ANGRY and listener_component.emotional_intensity > 0.7:
-            if listener.knowledge.relationships[speaker.name] < -20:
+            if listener.knowledge.relationships[speaker.name] < -10:
                 self.trigger_aggression(listener, speaker)
 
     def map_sentiment_to_relationship(self, compound_score):
-        # Use a middle ground curve (0.75 power instead of 0.7 or 0.8)
-        max_change = 3  # Keep the original max_change value
+        max_change = 3
         if compound_score > 0:
-            change = min(int((compound_score ** 0.75) * 3.5), max_change)  # Middle ground between 3 and 4
+            change = min(int((compound_score ** 0.75) * 3.75), max_change)
         else:
-            change = max(int(-((-compound_score) ** 0.75) * 3.5), -max_change)  # Middle ground between 3 and 4
+            change = max(int(-((-compound_score) ** 0.75) * 3.5), -max_change)
         return change
 
     def trigger_aggression(self, aggressor, target):
@@ -568,3 +583,46 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
             target.calm_down()
             self.logger.info(f"{actor.name} attempted to calm {target.name}")
             self.game.show_message(f"{actor.name} successfully calms down {target.name}.", MessageChannel.DIALOGUE)
+
+    def adjust_relationship_from_summary(self, actor1, actor2, summary):
+        sentiment_analyzer = SentimentIntensityAnalyzer()
+        sentiment_scores = sentiment_analyzer.polarity_scores(summary)
+        compound_score = sentiment_scores['compound']
+
+        # Map the sentiment score to a relationship change
+        relationship_change = self.map_sentiment_to_relationship(compound_score)
+
+        # Log initial relationship values
+        initial_relationship1 = actor1.knowledge.relationships.get(actor2.name, 0)
+        initial_relationship2 = actor2.knowledge.relationships.get(actor1.name, 0)
+        self.logger.info(f"Initial relationship values - {actor1.name} to {actor2.name}: {initial_relationship1}, {actor2.name} to {actor1.name}: {initial_relationship2}")
+
+        # Update relationships for both actors
+        actor1.knowledge.update_relationship(actor2.name, relationship_change)
+        actor2.knowledge.update_relationship(actor1.name, relationship_change)
+
+        # Log new relationship values
+        new_relationship1 = actor1.knowledge.relationships.get(actor2.name, 0)
+        new_relationship2 = actor2.knowledge.relationships.get(actor1.name, 0)
+        self.logger.info(f"Relationship between {actor1.name} and {actor2.name} changed by {relationship_change} based on conversation summary")
+        self.logger.info(f"New relationship values - {actor1.name} to {actor2.name}: {new_relationship1}, {actor2.name} to {actor1.name}: {new_relationship2}")
+
+        # Categorize the conversation based on the relationship change
+        if relationship_change <= -3:
+            conversation_quality = "terrible"
+            message = f"The conversation between {actor1.name} and {actor2.name} was {conversation_quality}, severely damaging their relationship."
+        elif -2 <= relationship_change <= -1:
+            conversation_quality = "bad"
+            message = f"The conversation between {actor1.name} and {actor2.name} was {conversation_quality}, negatively affecting their relationship."
+        elif relationship_change == 0:
+            conversation_quality = "average"
+            message = f"The conversation between {actor1.name} and {actor2.name} was {conversation_quality}, with no significant impact on their relationship."
+        elif 1 <= relationship_change <= 2:
+            conversation_quality = "good"
+            message = f"The conversation between {actor1.name} and {actor2.name} was {conversation_quality}, positively affecting their relationship."
+        else:  # relationship_change >= 3
+            conversation_quality = "great"
+            message = f"The conversation between {actor1.name} and {actor2.name} was {conversation_quality}, significantly improving their relationship."
+
+        # Show the categorized relationship change in the message log
+        self.game.show_message(message, MessageChannel.SYSTEM)
