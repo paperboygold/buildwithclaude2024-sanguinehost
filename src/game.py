@@ -15,7 +15,7 @@ import shelve
 import tcod
 from systems.CombatSystem import CombatSystem
 from systems.PlayerSystem import PlayerSystem
-from systems.DialogueSystem import DialogueSystem
+from systems.dialogue.DialogueSystem import DialogueSystem
 from systems.InputSystem import InputSystem
 from data.character_cards import get_character_card
 

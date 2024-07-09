@@ -2,7 +2,7 @@ import tcod
 from systems.MessageSystem import MessageSystem
 from systems.RenderSystem import RenderSystem
 from systems.InputSystem import InputSystem
-from systems.DialogueSystem import DialogueSystem
+from systems.dialogue.DialogueSystem import DialogueSystem
 from systems.PlayerSystem import PlayerSystem
 from systems.MessageSystem import MessageChannel
 
