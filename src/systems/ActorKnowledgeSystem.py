@@ -162,18 +162,17 @@ class ActorKnowledgeSystem(System):
             "sworn enemy": random.randint(-80, -61),
             "rival": random.randint(-60, -41),
             "antagonist": random.randint(-40, -21),
-            "unfriendly": random.randint(-20, -1),
-            "stranger": random.randint(-10, 10),
-            "acquaintance": random.randint(1, 20),
-            "friendly": random.randint(21, 30),
-            "colleague": random.randint(21, 40),
-            "good friend": random.randint(31, 50),
-            "close friend": random.randint(41, 60),
-            "confidant": random.randint(51, 70),
-            "ally": random.randint(51, 80),
-            "loyal ally": random.randint(71, 90)
+            "unfriendly": random.randint(-20, -6),
+            "stranger": random.randint(-5, 5),
+            "acquaintance": random.randint(6, 15),
+            "friendly": random.randint(16, 30),
+            "good friend": random.randint(31, 45),
+            "close friend": random.randint(46, 60),
+            "confidant": random.randint(61, 75),
+            "ally": random.randint(76, 85),
+            "loyal ally": random.randint(86, 95)
         }
-        return relationship_values.get(relationship_type, random.randint(-10, 10))
+        return relationship_values.get(relationship_type, random.randint(-5, 5))
 
     def are_factions_compatible(self, actor1, actor2):
         faction1 = actor1.character_card['faction']

@@ -99,33 +99,31 @@ class RelationshipManager:
         self.logger.debug(f"Relationship between {actor1.name} and {actor2.name} changed by {relationship_change} due to combat. New value: {new_relationship_value}")
 
     def get_relationship_type(self, value):
-        if value <= -80:
+        if value < -80:
             return "arch-nemesis"
-        elif value <= -60:
+        elif value < -60:
             return "sworn enemy"
-        elif value <= -40:
+        elif value < -40:
             return "rival"
-        elif value <= -20:
+        elif value < -20:
             return "antagonist"
-        elif value < 0:
+        elif value < -5:
             return "unfriendly"
-        elif value <= 10:
+        elif value < 5:
             return "stranger"
-        elif value <= 20:
+        elif value < 15:
             return "acquaintance"
-        elif value <= 30:
+        elif value < 30:
             return "friendly"
-        elif value <= 40:
-            return "colleague"
-        elif value <= 50:
+        elif value < 45:
             return "good friend"
-        elif value <= 60:
+        elif value < 60:
             return "close friend"
-        elif value <= 70:
+        elif value < 75:
             return "confidant"
-        elif value <= 80:
+        elif value < 85:
             return "ally"
-        elif value <= 90:
+        elif value < 95:
             return "loyal ally"
         else:
             return "soulmate"
