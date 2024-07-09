@@ -1,4 +1,5 @@
 from ecs.ecs import Component
+import time
 
 class KnowledgeComponent(Component):
     def __init__(self):
@@ -7,6 +8,7 @@ class KnowledgeComponent(Component):
         self.conversation_memories = []
         self.combat_memories = []
         self.relationships = {}
+        self.long_term_relationship_memory = {}
 
     def add_actor(self, actor_name, relationship_type, initial_value, relationship_story, is_aggressive=False, is_targeting=False, last_seen_position=None, proximity=None, direction=None):
         self.known_actors[actor_name] = {
@@ -22,6 +24,34 @@ class KnowledgeComponent(Component):
 
     def update_relationship(self, actor_name, relationship_type, value):
         self.relationships[actor_name] = {"type": relationship_type, "value": value}
+        
+        # Update long-term memory
+        if actor_name not in self.long_term_relationship_memory:
+            self.long_term_relationship_memory[actor_name] = []
+        
+        self.long_term_relationship_memory[actor_name].append({
+            "type": relationship_type,
+            "value": value,
+            "timestamp": time.time()
+        })
+        
+        # Keep only the last 10 entries in long-term memory
+        self.long_term_relationship_memory[actor_name] = self.long_term_relationship_memory[actor_name][-10:]
+
+    def get_long_term_relationship_trend(self, actor_name):
+        if actor_name not in self.long_term_relationship_memory:
+            return None
+        
+        memory = self.long_term_relationship_memory[actor_name]
+        if len(memory) < 2:
+            return None
+        
+        start_value = memory[0]["value"]
+        end_value = memory[-1]["value"]
+        time_diff = memory[-1]["timestamp"] - memory[0]["timestamp"]
+        
+        trend = (end_value - start_value) / time_diff
+        return trend
 
     def update_actor_info(self, actor_name, entity=None, is_aggressive=None, is_targeting=None, last_seen_position=None, proximity=None, direction=None, is_dead=None):
         if actor_name not in self.known_actors:

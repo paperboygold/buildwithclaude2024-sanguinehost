@@ -22,7 +22,10 @@ class SentimentAnalyzer:
             "quest": 0.3, "adventure": 0.4, "magic": 0.2, "curse": -0.3,
             "dragon": 0.1, "sword": 0.1, "spell": 0.2, "potion": 0.1,
             "dark": -0.2, "light": 0.2, "evil": -0.4, "good": 0.4,
-            "ancient": 0.1, "prophecy": 0.2, "destiny": 0.3, "doom": -0.3
+            "ancient": 0.1, "prophecy": 0.2, "destiny": 0.3, "doom": -0.3,
+            "illuminate": 0.3, "insight": 0.4, "wisdom": 0.4, "star": 0.2,
+            "path": 0.1, "traveler": 0.1, "journey": 0.2, "mystic": 0.2,
+            "enchant": 0.3, "legend": 0.2, "lore": 0.1, "artifact": 0.2
         }
         
         sentiment_scores = self.sentiment_analyzer.polarity_scores(sanitized_dialogue)
@@ -57,18 +60,18 @@ class SentimentAnalyzer:
         self.logger.debug(f"Weighted average sentiment: {weighted_avg_sentiment}")
         
         # Adjust the relationship change calculation
-        if abs(weighted_avg_sentiment) < 0.1:
+        if abs(weighted_avg_sentiment) < 0.05:  # Changed from 0.1 to 0.05
             relationship_change = 0  # Consider very small changes as neutral
             self.logger.debug("Change considered neutral due to small magnitude")
         elif weighted_avg_sentiment < 0:
-            relationship_change = -1 * (abs(weighted_avg_sentiment) ** 0.8) * 4
+            relationship_change = -1 * (abs(weighted_avg_sentiment) ** 0.9) * 2  # Reduced multiplier from 4 to 2
             self.logger.debug("Negative relationship change calculated")
         else:
-            relationship_change = weighted_avg_sentiment ** 0.8 * 3
+            relationship_change = weighted_avg_sentiment ** 0.9 * 1.5  # Reduced multiplier from 3 to 1.5
             self.logger.debug("Positive relationship change calculated")
         
         relationship_change = round(relationship_change, 2)
-        relationship_change = max(-5, min(3, relationship_change))  # Narrower range
+        relationship_change = max(-3, min(2, relationship_change))  # Narrower range
         
         final_change = relationship_change * context_modifier
         self.logger.info(f"Final relationship change: {final_change}")
@@ -96,10 +99,14 @@ class SentimentAnalyzer:
         self.logger.debug(f"Getting impact description. Relationship change: {relationship_change}")
         
         abs_change = abs(relationship_change)
-        if abs_change < 0.5:
+        if abs_change < 0.1:
             impact = "Negligible"
-        elif abs_change < 1:
+        elif abs_change < 0.3:
+            impact = "Very Slight"
+        elif abs_change < 0.5:
             impact = "Slight"
+        elif abs_change < 1:
+            impact = "Noticeable"
         elif abs_change < 2:
             impact = "Moderate"
         else:
