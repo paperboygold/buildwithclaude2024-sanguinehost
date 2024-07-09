@@ -101,16 +101,16 @@ class SentimentAnalyzer:
     def categorize_conversation_quality(self, relationship_change):
         self.logger.debug(f"Categorizing conversation quality. Relationship change: {relationship_change}")
         
-        if relationship_change <= -3:
+        if relationship_change <= -0.5:
+            category = "very negative"
+        elif relationship_change <= -0.2:
             category = "negative"
-        elif relationship_change <= -1:
-            category = "slightly negative"
-        elif relationship_change < 1:
+        elif relationship_change < 0.2:
             category = "neutral"
-        elif relationship_change < 3:
-            category = "slightly positive"
-        else:
+        elif relationship_change < 0.5:
             category = "positive"
+        else:
+            category = "very positive"
         
         self.logger.info(f"Conversation quality categorized as: {category}")
         return category
@@ -121,13 +121,9 @@ class SentimentAnalyzer:
         abs_change = abs(relationship_change)
         if abs_change < 0.1:
             impact = "Negligible"
-        elif abs_change < 0.3:
-            impact = "Very Slight"
-        elif abs_change < 0.5:
+        elif abs_change < 0.2:
             impact = "Slight"
-        elif abs_change < 1:
-            impact = "Noticeable"
-        elif abs_change < 2:
+        elif abs_change < 0.5:
             impact = "Moderate"
         else:
             impact = "Significant"
