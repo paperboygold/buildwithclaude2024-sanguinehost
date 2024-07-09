@@ -92,16 +92,16 @@ class DialogueSystem:
 
                     # Use the character card information
                     system_prompt = f"""You are {actor.name}, an NPC in a roguelike game. 
-Character: {json.dumps(actor_card, indent=2)}
-Environmental knowledge: {actor.knowledge.get_summary()}
-{relationship_info}
-You are speaking to {self.game.world.player.name if isinstance(self.game.world.player, Actor) else 'the Player'}.
-Respond in character with extremely brief responses, typically 1-2 short sentences or 10 words or less. Be concise and direct.
-Important: Speak only in dialogue. Do not describe actions, appearances, use asterisks or quotation marks. Simply respond with what your character would say.
-Respond to the other character's last statement while maintaining your character.
-Your current relationship with the other character is {actor.knowledge.relationships.get(self.game.world.player.name, {"type": "stranger", "value": 0})["value"]}. Adjust your tone accordingly (more friendly for positive values, more cautious or hostile for negative values).
-Your current emotional state is {actor_component.sentiment_history[-1]}. Let this influence your response.
-"""
+                    Character: {json.dumps(actor_card, indent=2)}
+                    Environmental knowledge: {actor.knowledge.get_summary()}
+                    {relationship_info}
+                    You are speaking to {self.game.world.player.name if isinstance(self.game.world.player, Actor) else 'someone'}.
+                    Respond in character with extremely brief responses, typically 1-2 short sentences or 10 words or less. Be concise and direct.
+                    Important: Speak only in dialogue. Do not describe actions, appearances, use asterisks or quotation marks. Simply respond with what your character would say.
+                    Respond to the other character's last statement while maintaining your character.
+                    Your current relationship with the other character is {actor.knowledge.relationships.get(self.game.world.player.name, {"type": "stranger", "value": 0})["value"]}. Adjust your tone accordingly (more friendly for positive values, more cautious or hostile for negative values).
+                    Your current emotional state is {actor_component.sentiment_history[-1]}. Let this influence your response.
+                    """
                     
                     self.logger.info(f"API Request for {actor.name}:")
                     self.logger.info(f"System Prompt: {system_prompt}")
@@ -112,7 +112,7 @@ Your current emotional state is {actor_component.sentiment_history[-1]}. Let thi
                         "max_tokens": 50,
                         "messages": actor_component.dialogue_history,  # Include the full conversation history
                         "system": system_prompt,
-                        "temperature": 0.95,  # Increase temperature for more varied responses
+                        "temperature": 0.97,
                         "top_p": 1,
                         "stream": False,
                         "stop_sequences": ["\n\nHuman:", "\n\nSystem:", "\n\nAssistant:"]

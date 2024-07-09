@@ -42,12 +42,34 @@ class RelationshipManager:
         new_relationship_value = max(-100, min(100, relationship_value + relationship_change))
         
         # Update relationship type based on thresholds
-        if new_relationship_value <= -50:
-            new_relationship_type = "enemy"
-        elif new_relationship_value < 20:
+        if new_relationship_value <= -80:
+            new_relationship_type = "arch-nemesis"
+        elif new_relationship_value <= -60:
+            new_relationship_type = "sworn enemy"
+        elif new_relationship_value <= -40:
+            new_relationship_type = "rival"
+        elif new_relationship_value <= -20:
+            new_relationship_type = "antagonist"
+        elif new_relationship_value < 0:
+            new_relationship_type = "unfriendly"
+        elif new_relationship_value < 10:
             new_relationship_type = "neutral"
+        elif new_relationship_value < 20:
+            new_relationship_type = "acquaintance"
+        elif new_relationship_value < 30:
+            new_relationship_type = "friendly"
+        elif new_relationship_value < 40:
+            new_relationship_type = "good friend"
+        elif new_relationship_value < 50:
+            new_relationship_type = "close friend"
+        elif new_relationship_value < 60:
+            new_relationship_type = "confidant"
+        elif new_relationship_value < 70:
+            new_relationship_type = "best friend"
+        elif new_relationship_value < 80:
+            new_relationship_type = "loyal ally"
         else:
-            new_relationship_type = "friend"
+            new_relationship_type = "soulmate"
         
         # Update the relationship for both actors
         actor1.knowledge.update_relationship(actor2.name, new_relationship_type, new_relationship_value)
