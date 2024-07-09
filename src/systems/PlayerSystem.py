@@ -21,7 +21,7 @@ class PlayerSystem(System):
         if isinstance(target, Actor):
             actor_component = target.get_component(ActorComponent)
             if hasattr(actor_component, 'aggression_type'):
-                if actor_component.aggression_type == "hostile":
+                if actor_component.aggression_type == "hostile" or target.is_hostile(player):
                     self.game.combat_system.attack(player, target)
                     return True
                 else:

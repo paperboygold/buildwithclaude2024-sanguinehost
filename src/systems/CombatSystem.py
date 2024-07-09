@@ -22,6 +22,31 @@ class CombatSystem(System):
         attacker_fighter = attacker.get_component(FighterComponent)
         target_fighter = target.get_component(FighterComponent)
 
+        # Check if the target is actively hostile or attacking
+        target_is_hostile = target.is_hostile(attacker) if isinstance(target, Actor) else False
+        target_is_attacking = target == self.aggressors.get(attacker)
+
+        # Check relationship before allowing attack
+        relationship_value = attacker.knowledge.relationships.get(target.name, {"value": 0})["value"]
+        
+        # If the attacker is the player, prompt for confirmation only for non-hostile targets
+        if attacker == self.game.world.player and not target_is_hostile:
+            if not self.game.player_system.confirm_attack(target):
+                self.logger.info(f"Player chose not to attack {target.name}.")
+                return False
+        elif isinstance(attacker, Actor):
+            actor_component = attacker.get_component(ActorComponent)
+            # Allow attack if the target is hostile, attacking, or if the attacker is hostile towards the target
+            if not (target_is_hostile or target_is_attacking or target in actor_component.hostile_towards or attacker.aggression_type == "hostile"):
+                if relationship_value > 0:
+                    self.logger.info(f"{attacker.name} refuses to attack {target.name} due to positive relationship.")
+                    self.game.show_message(f"{attacker.name} refuses to attack {target.name}!", MessageChannel.COMBAT)
+                    return False
+                elif attacker.aggression_type != "hostile" and attacker.aggression_type != "peaceful":
+                    self.logger.info(f"{attacker.name} is not hostile and refuses to attack {target.name}.")
+                    self.game.show_message(f"{attacker.name} refuses to attack {target.name}!", MessageChannel.COMBAT)
+                    return False
+
         damage = max(0, attacker_fighter.power - target_fighter.defense)
 
         if damage > 0:
@@ -34,11 +59,14 @@ class CombatSystem(System):
             self.logger.debug(f"Aggressor recorded: {attacker.name} is now the aggressor for {target.name}")
 
             # Handle target's response
-            if isinstance(target, Actor) and attacker not in target.get_component(ActorComponent).hostile_towards:
-                # Check if the attacker is already hostile towards the target
-                if target not in attacker.get_component(ActorComponent).hostile_towards:
-                    self.logger.info(f"Combat response: {target.name} is becoming hostile towards {attacker.name}")
-                    target.become_hostile(attacker, self.game)
+            if isinstance(target, Actor):
+                target_relationship = target.knowledge.relationships.get(attacker.name, {"value": 0})["value"]
+                if target_relationship <= 0 or target.aggression_type != "peaceful":
+                    if attacker not in target.get_component(ActorComponent).hostile_towards:
+                        self.logger.info(f"Combat response: {target.name} is becoming hostile towards {attacker.name}")
+                        target.become_hostile(attacker, self.game)
+                    target.get_component(ActorComponent).target = attacker
+                    target.get_component(ActorComponent).state = ActorState.AGGRESSIVE
             
             # Add both attacker and target to combat participants
             self.combat_participants.add(attacker)
@@ -75,13 +103,30 @@ class CombatSystem(System):
                 self.handle_witness_reaction(entity, attacker, target)
 
     def handle_witness_reaction(self, witness, attacker, target):
-        if self.game.dialogue_system.relationship_manager.will_intervene_in_combat(witness, attacker, target):
-            witness.become_hostile(attacker, self.game)
-            witness.get_component(ActorComponent).target = attacker
-            self.game.logger.info(f"{witness.name} decides to intervene against {attacker.name}")
-            self.game.show_message(f"{witness.name} decides to intervene against {attacker.name}", MessageChannel.COMBAT)
+        attacker_relationship = witness.knowledge.relationships.get(attacker.name, {"value": 0})["value"]
+        target_relationship = witness.knowledge.relationships.get(target.name, {"value": 0})["value"]
+        
+        witness_aggression_type = witness.get_component(ActorComponent).character_card['aggression_type']
+        
+        if witness_aggression_type == "peaceful":
+            # Peaceful types are more likely to intervene against aggressors
+            if self.game.dialogue_system.relationship_manager.will_intervene_in_combat(witness, attacker, target):
+                witness.become_hostile(attacker, self.game)
+                witness.get_component(ActorComponent).target = attacker
+                self.game.logger.info(f"{witness.name}, being peaceful, decides to intervene against {attacker.name}")
+                self.game.show_message(f"{witness.name} decides to intervene against {attacker.name}", MessageChannel.COMBAT)
+        elif target_relationship > 0 and attacker_relationship <= 0:
+            # Other types intervene based on relationships
+            if self.game.dialogue_system.relationship_manager.will_intervene_in_combat(witness, attacker, target):
+                witness.become_hostile(attacker, self.game)
+                witness.get_component(ActorComponent).target = attacker
+                self.game.logger.info(f"{witness.name} decides to intervene against {attacker.name}")
+                self.game.show_message(f"{witness.name} decides to intervene against {attacker.name}", MessageChannel.COMBAT)
+        elif attacker_relationship > 0 and target_relationship <= 0:
+            self.game.logger.info(f"{witness.name} supports {attacker.name}'s actions")
         else:
             self.game.logger.info(f"{witness.name} witnesses the attack but chooses not to intervene")
+        
         self.combat_participants.add(witness)
 
     def get_aggressor(self, target):

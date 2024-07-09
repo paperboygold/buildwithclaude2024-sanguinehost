@@ -220,26 +220,25 @@ class Actor(Entity):
             if isinstance(entity, Actor) and entity != self
         ]
         
-        visible_targets = [
-            target for target in potential_targets
-            if game.world.game_map.is_in_fov(int(self.x), int(self.y)) and
-            game.world.game_map.is_in_fov(int(target.x), int(target.y)) and
-            self.is_valid_target(target)
-        ]
+        valid_targets = []
+        for target in potential_targets:
+            if (game.world.game_map.is_in_fov(int(self.x), int(self.y)) and
+                game.world.game_map.is_in_fov(int(target.x), int(target.y)) and
+                self.is_valid_target(target)):
+                
+                relationship_value = self.knowledge.relationships.get(target.name, {"value": 0})["value"]
+                
+                # Consider targets with relationship value <= 10 as valid
+                if relationship_value < 10:
+                    valid_targets.append(target)
         
-        if visible_targets:
+        if valid_targets:
             actor_component.target = min(
-                visible_targets, 
+                valid_targets, 
                 key=lambda t: ((t.x - self.x)**2 + (t.y - self.y)**2)**0.5
             )
         else:
             actor_component.target = None
-
-    def is_valid_target(self, entity):
-        return (entity is not None and 
-                (isinstance(entity, Actor) or isinstance(entity, Player)) and 
-                entity != self and 
-                not entity.get_component(FighterComponent).is_dead())
 
     def find_path_to_target_astar(self, game_map, target):
         # Create a cost array where 1 is walkable and 0 is blocked

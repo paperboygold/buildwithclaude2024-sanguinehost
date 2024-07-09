@@ -2,6 +2,7 @@ import logging
 import random
 from .SentimentAnalyzer import SentimentAnalyzer
 from systems.MessageSystem import MessageChannel
+from components.ActorComponent import ActorComponent
 
 class RelationshipManager:
     def __init__(self, game):
@@ -61,23 +62,28 @@ class RelationshipManager:
         witness_relationship_with_attacker = self.get_relationship(witness, attacker)
         witness_relationship_with_target = self.get_relationship(witness, target)
 
-        # Calculate the relationship difference
-        relationship_difference = witness_relationship_with_target - witness_relationship_with_attacker
+        # Get the witness's aggression type
+        witness_aggression_type = witness.get_component(ActorComponent).character_card['aggression_type']
 
-        # Base intervention chance
-        intervention_chance = 0.5
+        # Peaceful types are very likely to intervene, regardless of relationships
+        if witness_aggression_type == "peaceful":
+            intervention_chance = 0.8
+        else:
+            # For non-peaceful types, base the decision on relationships
+            relationship_difference = witness_relationship_with_target - witness_relationship_with_attacker
+            
+            # Base intervention chance
+            intervention_chance = 0.5
 
-        # Adjust intervention chance based on relationships
-        if relationship_difference > 0:  # Witness likes the target more
-            intervention_chance += min(relationship_difference / 100, 0.4)
-        else:  # Witness likes the attacker more or equally
-            intervention_chance -= min(abs(relationship_difference) / 100, 0.4)
+            # Adjust intervention chance based on relationships
+            if relationship_difference > 0:  # Witness likes the target more
+                intervention_chance += min(relationship_difference / 100, 0.4)
+            else:  # Witness likes the attacker more or equally
+                intervention_chance -= min(abs(relationship_difference) / 100, 0.4)
 
-        # Consider witness's aggression type
-        if witness.aggression_type == "peaceful":
-            intervention_chance += 0.2
-        elif witness.aggression_type == "hostile":
-            intervention_chance -= 0.2
+            # Hostile types are less likely to intervene unless they have a strong preference
+            if witness_aggression_type == "hostile":
+                intervention_chance *= 0.5
 
         # Final decision
         return random.random() < intervention_chance

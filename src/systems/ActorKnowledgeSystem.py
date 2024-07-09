@@ -136,7 +136,6 @@ class ActorKnowledgeSystem(System):
             relationship_types = [
                 "stranger",
                 "acquaintance",
-                "colleague",
                 "friendly",
                 "good friend",
                 "close friend",
@@ -154,7 +153,7 @@ class ActorKnowledgeSystem(System):
             ]
         
         # Weighted random choice to make some relationships more common than others
-        weights = [0.3, 0.2, 0.15, 0.1, 0.1, 0.05, 0.05, 0.03, 0.02]
+        weights = [0.3, 0.2, 0.15, 0.1, 0.1, 0.05, 0.05, 0.05]
         return random.choices(relationship_types, weights=weights[:len(relationship_types)])[0]
 
     def calculate_initial_relationship_value(self, relationship_type):
