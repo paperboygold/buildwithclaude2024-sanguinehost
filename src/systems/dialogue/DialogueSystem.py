@@ -1,18 +1,16 @@
 import logging
 import tcod
 import json
-import time
 import textwrap
 import traceback
-import random
 from systems.MessageSystem import MessageChannel, Message
-from components.ActorComponent import ActorComponent, ActorState, EmotionalState
+from components.ActorComponent import ActorComponent
 from tcod.event import KeySym
-from entities.Actor import Actor
-from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from data.character_cards import character_cards, get_character_card
 from .ConversationManager import ConversationManager
 from .SentimentAnalyzer import SentimentAnalyzer
+from .ConversationSummarizer import ConversationSummarizer
+from .RelationshipManager import RelationshipManager
 
 class DialogueSystem:
     def __init__(self, game):
@@ -21,6 +19,8 @@ class DialogueSystem:
         self.anthropic_client = game.anthropic_client
         self.conversation_manager = ConversationManager(game, self.anthropic_client)
         self.sentiment_analyzer = SentimentAnalyzer()
+        self.conversation_summarizer = ConversationSummarizer(game, self.anthropic_client)
+        self.relationship_manager = RelationshipManager(game)
 
     def start_dialogue(self, actor):
         if self.game.disable_dialogue_system:
@@ -166,12 +166,12 @@ You may reference your recent combat experiences if relevant to the conversation
 
             # Summarize the conversation only if there were any messages
             if actor_component.dialogue_history:
-                summary = self.summarize_full_conversation(self.game.world.player, actor, actor_component.dialogue_history)
+                summary = self.conversation_summarizer.generate_conversation_summary(self.game.world.player, actor, actor_component.dialogue_history)
                 self.add_conversation_memory(self.game.world.player, actor, summary)
                 self.logger.info(f"Conversation summary between Player and {actor.name}: {summary}")
 
                 # Apply the final relationship adjustment based on the conversation summary
-                self.adjust_relationship_from_summary(self.game.world.player, actor, actor_component.dialogue_history, summary)
+                self.relationship_manager.adjust_relationship_from_summary(self.game.world.player, actor, actor_component.dialogue_history, summary)
             else:
                 self.logger.info(f"Dialogue with {actor.name} ended without any messages exchanged.")
 
@@ -256,30 +256,6 @@ You may reference your recent combat experiences if relevant to the conversation
         actor2.knowledge.add_conversation_memory(f"Talked with {actor1.name}: {summary}")
         self.logger.info(f"Added conversation memory for {actor1.name} and {actor2.name}: {summary}")
 
-    def summarize_full_conversation(self, actor1, actor2, conversation):
-        try:
-            self.logger.info(f"Summarizing conversation between {actor1.name} and {actor2.name}")
-            system_prompt = f"""Summarize the conversation between {actor1.name} and {actor2.name} in a dungeon setting.
-            Provide a single sentence summary of their conversation, focusing on the main topic or outcome."""
-
-            request_body = {
-                "model": "claude-3-5-sonnet-20240620",
-                "max_tokens": 100,
-                "messages": conversation + [{"role": "user", "content": "Summarize the conversation."}],
-                "system": system_prompt,
-                "temperature": 0.93
-            }
-            
-            response = self.anthropic_client.messages.create(**request_body)
-            summary = response.content[0].text if response.content else ""
-            self.logger.info(f"Generated summary: {summary}")
-            return summary
-
-        except Exception as e:
-            self.logger.error(f"Error in summarizing full conversation: {str(e)}")
-            self.logger.debug(traceback.format_exc())
-            return "The conversation ended without a clear summary."
-
     def process_dialogue(self, speaker, listener, dialogue):
         # Define a neutral whitelist for names, titles, and fantasy terms
         neutral_whitelist = ["the destroyer", "the enigma", "the sage", "shadows", "age of shadows", "destiny", "dance"]
@@ -314,56 +290,6 @@ You may reference your recent combat experiences if relevant to the conversation
         
         # Return the sentiment score and relationship change without applying it
         return avg_sentiment, relationship_change
-
-    def adjust_relationship_from_summary(self, actor1, actor2, conversation_history, summary):
-        # Analyze the sentiment of the summary
-        neutral_whitelist = [actor1.name.lower(), actor2.name.lower()]
-        sentiment_score = self.sentiment_analyzer.analyze_sentiment(summary, neutral_whitelist)
-        
-        # Calculate the relationship change based on the sentiment
-        relationship_change = self.sentiment_analyzer.calculate_relationship_change(sentiment_score)
-        
-        # Categorize the conversation based on the relationship change
-        conversation_quality = self.sentiment_analyzer.categorize_conversation_quality(relationship_change)
-        
-        message = f"The conversation between {actor1.name} and {actor2.name} was {conversation_quality}, "
-        
-        if relationship_change <= -5:
-            message += "severely damaging their relationship."
-        elif relationship_change <= -2:
-            message += "negatively affecting their relationship."
-        elif relationship_change < 0:
-            message += "slightly worsening their relationship."
-        elif relationship_change == 0:
-            message += "with no significant impact on their relationship."
-        elif relationship_change < 2:
-            message += "slightly improving their relationship."
-        elif relationship_change < 5:
-            message += "positively affecting their relationship."
-        else:
-            message += "significantly improving their relationship."
-        
-        # Show the categorized relationship change in the message log
-        self.game.show_message(message, MessageChannel.SYSTEM)
-        
-        # Update the relationship between the actors
-        current_relationship = actor1.knowledge.relationships.get(actor2.name, {"type": "stranger", "value": 0})
-        relationship_value = current_relationship["value"]
-        new_relationship_value = max(-100, min(100, relationship_value + relationship_change))
-        
-        # Update relationship type based on thresholds
-        if new_relationship_value <= -50:
-            new_relationship_type = "enemy"
-        elif new_relationship_value < 20:
-            new_relationship_type = "neutral"
-        else:
-            new_relationship_type = "friend"
-        
-        # Update the relationship for both actors
-        actor1.knowledge.update_relationship(actor2.name, new_relationship_type, new_relationship_value)
-        actor2.knowledge.update_relationship(actor1.name, new_relationship_type, new_relationship_value)
-        
-        self.logger.debug(f"Relationship between {actor1.name} and {actor2.name} changed by {relationship_change:.2f}. New value: {new_relationship_value:.2f}")
 
     def show_dialogue(self, speaker, message):
         formatted_message = f"\n{speaker.name}: \"{message}\"\n"

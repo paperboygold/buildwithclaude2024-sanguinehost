@@ -5,12 +5,14 @@ import random
 import traceback
 from systems.MessageSystem import MessageChannel
 from components.ActorComponent import ActorComponent, ActorState
+from systems.dialogue.ConversationSummarizer import ConversationSummarizer
 
 class ConversationManager:
     def __init__(self, game, anthropic_client):
         self.game = game
         self.logger = logging.getLogger(__name__)
         self.anthropic_client = anthropic_client
+        self.conversation_summarizer = ConversationSummarizer(game, anthropic_client)
 
     def start_actor_dialogue(self, actor1, actor2):
         if self.game.disable_dialogue_system:
@@ -45,18 +47,18 @@ class ConversationManager:
                     if choice:
                         self.game.show_message(f"{actor1.name} and {actor2.name} have started a conversation.", MessageChannel.DIALOGUE, sender=actor1)
                     else:
-                        summary, conversation_history = self.summarize_conversation(actor1, actor2)
+                        summary, conversation_history = self.conversation_summarizer.summarize_conversation(actor1, actor2)
                         if summary:  # Check if summary is not None
                             self.game.dialogue_system.add_conversation_memory(actor1, actor2, summary)
-                            self.game.dialogue_system.adjust_relationship_from_summary(actor1, actor2, conversation_history, summary)
+                            self.game.dialogue_system.relationship_manager.adjust_relationship_from_summary(actor1, actor2, conversation_history, summary)
                         else:
                             self.logger.error(f"Failed to generate summary for conversation between {actor1.name} and {actor2.name}")
                         return
                 else:
-                    summary, conversation_history = self.summarize_conversation(actor1, actor2)
+                    summary, conversation_history = self.conversation_summarizer.summarize_conversation(actor1, actor2)
                     if summary:  # Check if summary is not None
                         self.game.dialogue_system.add_conversation_memory(actor1, actor2, summary)
-                        self.game.dialogue_system.adjust_relationship_from_summary(actor1, actor2, conversation_history, summary)
+                        self.game.dialogue_system.relationship_manager.adjust_relationship_from_summary(actor1, actor2, conversation_history, summary)
                     else:
                         self.logger.error(f"Failed to generate summary for conversation between {actor1.name} and {actor2.name}")
                     return
@@ -144,46 +146,6 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
         
         return faction2 in faction_relationships.get(faction1, [])
 
-    def summarize_conversation(self, actor1, actor2):
-        try:
-            actor1_component = actor1.get_component(ActorComponent)
-            actor2_component = actor2.get_component(ActorComponent)
-            
-            system_prompt = f"""Summarize a brief, unique conversation between {actor1.name} and {actor2.name} in a dungeon setting.
-            {actor1.name}'s character: {actor1_component.character_card}
-            {actor2.name}'s character: {actor2_component.character_card}
-            Their relationship: {actor1.knowledge.get_relationship_story(actor2.name) or ""}
-            Environmental knowledge: {actor1.knowledge.get_summary()}
-            Provide a single sentence summary of their conversation, focusing on a specific topic or outcome.
-            Make sure the summary is different from previous conversations."""
-
-            request_body = {
-                "model": "claude-3-5-sonnet-20240620",
-                "max_tokens": 100,
-                "messages": [{"role": "user", "content": "Summarize the conversation."}],
-                "system": system_prompt,
-                "temperature": 0.97
-            }
-            
-            response = self.anthropic_client.messages.create(**request_body)
-            summary = response.content[0].text if response.content else None
-
-            if summary:
-                self.game.show_message(summary, MessageChannel.DIALOGUE)
-                conversation_history = [
-                    {"role": "system", "content": "A simulated conversation occurred."},
-                    {"role": "assistant", "content": summary}
-                ]
-                return summary, conversation_history
-            else:
-                self.logger.error("Failed to generate conversation summary: Empty response")
-                return None, None
-
-        except Exception as e:
-            self.logger.error(f"Error in summarizing conversation: {str(e)}")
-            self.logger.debug(traceback.format_exc())
-            return None, None
-
     def continue_actor_dialogue(self, actor1, actor2):
         try:
             actor1_component = actor1.get_component(ActorComponent)
@@ -267,9 +229,9 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
 
     def end_conversation(self, actor1, actor2, conversation_history):
         self.end_actor_conversation(actor1, actor2)
-        summary = self.generate_conversation_summary(actor1, actor2, conversation_history)
+        summary = self.conversation_summarizer.generate_conversation_summary(actor1, actor2, conversation_history)
         self.game.dialogue_system.add_conversation_memory(actor1, actor2, summary)
-        self.game.dialogue_system.adjust_relationship_from_summary(actor1, actor2, conversation_history, summary)
+        self.game.dialogue_system.relationship_manager.adjust_relationship_from_summary(actor1, actor2, conversation_history, summary)
         self.logger.info(f"Conversation ended between {actor1.name} and {actor2.name}. Summary: {summary}")
         return summary
 
@@ -293,30 +255,3 @@ Important: Speak only in dialogue. Do not describe actions, appearances, use ast
         
         if player_can_see:
             self.game.show_message(f"{actor1.name} and {actor2.name} have ended their conversation.", MessageChannel.DIALOGUE)
-
-    def generate_conversation_summary(self, actor1, actor2, conversation_history):
-        try:
-            self.logger.info(f"Generating summary for conversation between {actor1.name} and {actor2.name}")
-            system_prompt = f"""Summarize the conversation between {actor1.name} and {actor2.name} in a dungeon setting.
-            Provide a single sentence summary of their conversation, focusing on the main topic or outcome.
-            Do not include any dialogue or character actions in your summary."""
-
-            request_body = {
-                "model": "claude-3-5-sonnet-20240620",
-                "max_tokens": 100,
-                "messages": conversation_history + [{"role": "user", "content": "Summarize the conversation."}],
-                "system": system_prompt,
-                "temperature": 0.93
-            }
-            
-            self.logger.debug(f"Conversation summary API request: {json.dumps(request_body, indent=2)}")
-            
-            response = self.anthropic_client.messages.create(**request_body)
-            summary = response.content[0].text if response.content else ""
-            self.logger.info(f"Generated summary: {summary}")
-            return summary
-
-        except Exception as e:
-            self.logger.error(f"Error in generating conversation summary: {str(e)}")
-            self.logger.debug(traceback.format_exc())
-            return "The conversation ended without a clear summary."
