@@ -13,23 +13,22 @@ class RelationshipManager:
         neutral_whitelist = [actor1.name.lower(), actor2.name.lower()]
         sentiment_score = self.sentiment_analyzer.analyze_sentiment(summary, neutral_whitelist)
         
-        # Calculate the relationship change based on the sentiment
-        relationship_change = self.sentiment_analyzer.calculate_relationship_change(sentiment_score)
-        relationship_change *= 0.5  # Reduce the rate of change by half
-        
         # Get the initial relationship value
         initial_relationship = self.get_relationship(actor1, actor2)
         
-        # Apply a dampening factor to the relationship change
-        dampening_factor = 0.5  # Adjust this value to control the long-term impact
-        damped_change = relationship_change * dampening_factor
+        # Calculate the relationship change based on the sentiment
+        relationship_change = self.sentiment_analyzer.calculate_relationship_change(
+            sentiment_score, 
+            context_modifier=1.0, 
+            current_relationship=initial_relationship
+        )
         
         # Apply the change
-        final_relationship = initial_relationship + damped_change
+        final_relationship = initial_relationship + relationship_change
         
         # Categorize the conversation based on the relationship change
-        conversation_quality = self.sentiment_analyzer.categorize_conversation_quality(damped_change)
-        impact_description = self.sentiment_analyzer.get_impact_description(damped_change)
+        conversation_quality = self.sentiment_analyzer.categorize_conversation_quality(relationship_change)
+        impact_description = self.sentiment_analyzer.get_impact_description(relationship_change)
         
         message = f"The conversation between {actor1.name} and {actor2.name} was {conversation_quality}, "
         message += f"having a {impact_description.lower()} impact on their relationship."
@@ -40,7 +39,7 @@ class RelationshipManager:
         # Update the relationship between the actors
         current_relationship = actor1.knowledge.relationships.get(actor2.name, {"type": "stranger", "value": 0})
         relationship_value = current_relationship["value"]
-        new_relationship_value = max(-100, min(100, relationship_value + damped_change))
+        new_relationship_value = max(-100, min(100, relationship_value + relationship_change))
         
         # Update relationship type based on thresholds
         if new_relationship_value <= -50:
@@ -54,7 +53,7 @@ class RelationshipManager:
         actor1.knowledge.update_relationship(actor2.name, new_relationship_type, new_relationship_value)
         actor2.knowledge.update_relationship(actor1.name, new_relationship_type, new_relationship_value)
         
-        self.logger.debug(f"Relationship between {actor1.name} and {actor2.name} changed by {damped_change:.2f}. New value: {new_relationship_value:.2f}")
+        self.logger.debug(f"Relationship between {actor1.name} and {actor2.name} changed by {relationship_change:.2f}. New value: {new_relationship_value:.2f}")
         
         return final_relationship, message
 

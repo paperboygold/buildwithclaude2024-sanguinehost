@@ -50,33 +50,53 @@ class SentimentAnalyzer:
         
         return compound_score
 
-    def calculate_relationship_change(self, sentiment_score, context_modifier=1.0):
-        self.logger.debug(f"Calculating relationship change. Sentiment score: {sentiment_score}, Context modifier: {context_modifier}")
+    def calculate_relationship_change(self, sentiment_score, context_modifier=1.0, current_relationship=0):
+        self.logger.debug(f"Calculating relationship change. Sentiment score: {sentiment_score}, Context modifier: {context_modifier}, Current relationship: {current_relationship}")
         
         # Calculate weighted average of sentiment history
-        weights = [0.1, 0.15, 0.2, 0.25, 0.3]  # More recent interactions have higher weights
-        weighted_avg_sentiment = sum(s * w for s, w in zip(self.sentiment_history, weights)) / sum(weights)
+        weights = [0.2, 0.3, 0.5]  # More recent interactions have higher weights
+        weighted_avg_sentiment = sum(s * w for s, w in zip(self.sentiment_history[-3:], weights)) / sum(weights)
         
         self.logger.debug(f"Weighted average sentiment: {weighted_avg_sentiment}")
         
-        # Adjust the relationship change calculation
-        if abs(weighted_avg_sentiment) < 0.05:  # Changed from 0.1 to 0.05
-            relationship_change = 0  # Consider very small changes as neutral
-            self.logger.debug("Change considered neutral due to small magnitude")
-        elif weighted_avg_sentiment < 0:
-            relationship_change = -1 * (abs(weighted_avg_sentiment) ** 0.9) * 2  # Reduced multiplier from 4 to 2
-            self.logger.debug("Negative relationship change calculated")
+        # Adjust the base change calculation
+        base_change = sentiment_score * 0.6  # Reduce the impact of current interaction
+
+        # Make negative changes more impactful, but less than before
+        if sentiment_score < 0:
+            base_change *= 1.2  # Increase the impact of negative interactions, but not as much
+
+        # Apply diminishing returns
+        if len(self.sentiment_history) > 3:
+            diminishing_factor = 0.95 ** (len(self.sentiment_history) - 3)
+            base_change *= diminishing_factor
+        
+        # Adjust for extreme values and sudden shifts
+        if abs(sentiment_score) > 0.8:
+            base_change *= 1.2
+        
+        # Apply context modifier
+        final_change = base_change * context_modifier
+        
+        # Adjust the capping logic
+        if final_change > 0:
+            final_change = min(0.4, final_change)  # Cap positive changes at 0.4
         else:
-            relationship_change = weighted_avg_sentiment ** 0.9 * 1.5  # Reduced multiplier from 3 to 1.5
-            self.logger.debug("Positive relationship change calculated")
+            final_change = max(-0.6, final_change)  # Cap negative changes at -0.6
         
-        relationship_change = round(relationship_change, 2)
-        relationship_change = max(-3, min(2, relationship_change))  # Narrower range
-        
-        final_change = relationship_change * context_modifier
-        self.logger.info(f"Final relationship change: {final_change}")
-        
+        # Consider the overall conversation trend
+        if weighted_avg_sentiment > 0.3 and final_change < 0:
+            final_change *= 0.5  # Reduce negative impact if the overall trend is positive
+        elif weighted_avg_sentiment < -0.3 and final_change > 0:
+            final_change *= 0.5  # Reduce positive impact if the overall trend is negative
+
+        self.logger.info(f"Final relationship change: {final_change:.2f}")
         return final_change
+
+    def update_sentiment_history(self, sentiment_score):
+        self.sentiment_history.append(sentiment_score)
+        if len(self.sentiment_history) > 10:  # Keep only the last 10 scores
+            self.sentiment_history.pop(0)
 
     def categorize_conversation_quality(self, relationship_change):
         self.logger.debug(f"Categorizing conversation quality. Relationship change: {relationship_change}")
