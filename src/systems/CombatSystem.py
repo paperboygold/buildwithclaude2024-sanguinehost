@@ -54,6 +54,13 @@ class CombatSystem(System):
         else:
             self.logger.info(f"{attacker.name}'s attack on {target.name} was ineffective")
             self.game.show_message(f"{attacker.name}'s attack on {target.name} is ineffective!", MessageChannel.COMBAT)
+        
+        # Update relationships after combat
+        if target_fighter.is_dead():
+            self.game.dialogue_system.relationship_manager.update_relationship_after_combat(attacker, target, "victory")
+        else:
+            self.game.dialogue_system.relationship_manager.update_relationship_after_combat(attacker, target, "defeat")
+        
         return False  # Return False if the target survived
 
     def handle_attack_witnesses(self, attacker, target):
@@ -62,35 +69,19 @@ class CombatSystem(System):
             if (isinstance(entity, Actor) and 
                 entity != attacker and 
                 entity != target and
-                attacker not in entity.get_component(ActorComponent).hostile_towards and
                 self.game.world.game_map.is_in_fov(int(entity.x), int(entity.y)) and 
                 (self.game.world.game_map.is_in_fov(int(attacker.x), int(attacker.y)) or 
                  self.game.world.game_map.is_in_fov(int(target.x), int(target.y)))):
                 self.handle_witness_reaction(entity, attacker, target)
 
     def handle_witness_reaction(self, witness, attacker, target):
-        if attacker not in witness.get_component(ActorComponent).hostile_towards:
-            # Check if the attacker is attacking an enemy of the witness
-            if target in witness.get_component(ActorComponent).hostile_towards:
-                self.witness_decides_to_intervene(witness, attacker, target, help_target=False)
-            elif witness.aggression_type == "peaceful":
-                self.witness_decides_to_intervene(witness, attacker, target, help_target=True)
-            elif witness.aggression_type == "neutral" and (target.aggression_type == "peaceful" or random.random() < 0.5):
-                self.witness_decides_to_intervene(witness, attacker, target, help_target=True)
-            else:
-                self.game.logger.info(f"{witness.name} witnesses the attack but chooses not to intervene")
-
-    def witness_decides_to_intervene(self, witness, attacker, target, help_target):
-        if help_target:
+        if self.game.dialogue_system.relationship_manager.will_intervene_in_combat(witness, attacker, target):
             witness.become_hostile(attacker, self.game)
-            witness.get_component(ActorComponent).target = attacker  # Set the target explicitly
+            witness.get_component(ActorComponent).target = attacker
             self.game.logger.info(f"{witness.name} decides to intervene against {attacker.name}")
             self.game.show_message(f"{witness.name} decides to intervene against {attacker.name}", MessageChannel.COMBAT)
         else:
-            witness.become_hostile(target, self.game)
-            witness.get_component(ActorComponent).target = target  # Set the target explicitly
-            self.game.logger.info(f"{witness.name} decides to help {attacker.name} against {target.name}")
-            self.game.show_message(f"{witness.name} decides to help {attacker.name} against {target.name}", MessageChannel.COMBAT)
+            self.game.logger.info(f"{witness.name} witnesses the attack but chooses not to intervene")
         self.combat_participants.add(witness)
 
     def get_aggressor(self, target):

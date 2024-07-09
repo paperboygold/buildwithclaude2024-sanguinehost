@@ -115,19 +115,77 @@ class ActorKnowledgeSystem(System):
         tasks = []
         for i, actor1 in enumerate(actor_entities):
             for actor2 in actor_entities[i+1:]:
-                relationship_type = random.choice([
-                    "stranger", "friend", "rival", "mentor", "student", "ally", "enemy",
-                    "acquaintance", "family", "colleague"
-                ])
-                initial_value = random.randint(-10, 10)  # Initial relationship value
+                relationship_type = self.determine_initial_relationship_type(actor1, actor2)
+                initial_value = self.calculate_initial_relationship_value(relationship_type)
                 tasks.append(self.generate_relationship_story(actor1, actor2, relationship_type, initial_value))
         
         results = await asyncio.gather(*tasks)
         
         for result in results:
             actor1, actor2, relationship_type, relationship_value, relationship_story = result
+            self.logger.info(f"Generated relationship between {actor1.name} and {actor2.name}:")
+            self.logger.info(f"  Type: {relationship_type}")
+            self.logger.info(f"  Value: {relationship_value}")
+            self.logger.info(f"  Story: {relationship_story}")
             actor1.knowledge.add_actor(actor2.name, relationship_type, relationship_value, relationship_story)
             actor2.knowledge.add_actor(actor1.name, relationship_type, relationship_value, relationship_story)
+
+    def determine_initial_relationship_type(self, actor1, actor2):
+        # Consider faction compatibility
+        if self.are_factions_compatible(actor1, actor2):
+            relationship_types = [
+                "stranger",
+                "acquaintance",
+                "colleague",
+                "friendly",
+                "good friend",
+                "close friend",
+                "confidant",
+                "ally",
+                "loyal ally"
+            ]
+        else:
+            relationship_types = [
+                "stranger",
+                "unfriendly",
+                "antagonist",
+                "rival",
+                "sworn enemy"
+            ]
+        
+        # Weighted random choice to make some relationships more common than others
+        weights = [0.3, 0.2, 0.15, 0.1, 0.1, 0.05, 0.05, 0.03, 0.02]
+        return random.choices(relationship_types, weights=weights[:len(relationship_types)])[0]
+
+    def calculate_initial_relationship_value(self, relationship_type):
+        relationship_values = {
+            "sworn enemy": random.randint(-80, -61),
+            "rival": random.randint(-60, -41),
+            "antagonist": random.randint(-40, -21),
+            "unfriendly": random.randint(-20, -1),
+            "stranger": random.randint(-10, 10),
+            "acquaintance": random.randint(1, 20),
+            "friendly": random.randint(21, 30),
+            "colleague": random.randint(21, 40),
+            "good friend": random.randint(31, 50),
+            "close friend": random.randint(41, 60),
+            "confidant": random.randint(51, 70),
+            "ally": random.randint(51, 80),
+            "loyal ally": random.randint(71, 90)
+        }
+        return relationship_values.get(relationship_type, random.randint(-10, 10))
+
+    def are_factions_compatible(self, actor1, actor2):
+        faction1 = actor1.character_card['faction']
+        faction2 = actor2.character_card['faction']
+        
+        faction_relationships = {
+            "sages": ["sages", "enigmas"],
+            "enigmas": ["sages", "enigmas", "monsters"],
+            "monsters": ["monsters", "enigmas"]
+        }
+        
+        return faction2 in faction_relationships.get(faction1, [])
 
     async def generate_relationship_story(self, actor1, actor2, relationship_type, initial_value):
         actor1_component = actor1.get_component(ActorComponent)
