@@ -11,6 +11,7 @@ from .ConversationManager import ConversationManager
 from .SentimentAnalyzer import SentimentAnalyzer
 from .ConversationSummarizer import ConversationSummarizer
 from .RelationshipManager import RelationshipManager
+from entities.Actor import Actor
 
 class DialogueSystem:
     def __init__(self, game):
@@ -96,6 +97,7 @@ class DialogueSystem:
 Character: {json.dumps(actor_card, indent=2)}
 Environmental knowledge: {actor.knowledge.get_summary()}
 {relationship_info}
+You are speaking to {self.game.world.player.name if isinstance(self.game.world.player, Actor) else 'the Player'}.
 Respond in character with extremely brief responses, typically 1-2 short sentences or 10 words or less. Be concise and direct.
 Important: Speak only in dialogue. Do not describe actions, appearances, use asterisks or quotation marks. Simply respond with what your character would say.
 You may reference your recent combat experiences if relevant to the conversation."""
