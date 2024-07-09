@@ -7,30 +7,53 @@ from utils.mapgen import TileType
 class InputSystem(System):
     def __init__(self, game):
         self.game = game
+        self.pressed_keys = set()
 
     def handle_input(self):
         for event in tcod.event.wait():
             if event.type == "QUIT":
                 raise SystemExit()
             elif event.type == "KEYDOWN":
+                self.pressed_keys.add(event.sym)
                 return self.handle_keydown(event)
+            elif event.type == "KEYUP":
+                self.pressed_keys.discard(event.sym)
         return False
 
     def handle_keydown(self, event):
         action_taken = False
-        if event.sym == KeySym.UP:
-            self.game.move_player(0, -1)
+        move_map = {
+            # Arrow keys
+            KeySym.UP: (0, -1),
+            KeySym.DOWN: (0, 1),
+            KeySym.LEFT: (-1, 0),
+            KeySym.RIGHT: (1, 0),
+            # Numpad
+            KeySym.KP_8: (0, -1),
+            KeySym.KP_2: (0, 1),
+            KeySym.KP_4: (-1, 0),
+            KeySym.KP_6: (1, 0),
+            # Diagonal movement
+            KeySym.KP_7: (-1, -1),
+            KeySym.KP_9: (1, -1),
+            KeySym.KP_1: (-1, 1),
+            KeySym.KP_3: (1, 1),
+            # Optional: Add support for diagonal movement with arrow keys + modifiers
+            (KeySym.UP, KeySym.LEFT): (-1, -1),
+            (KeySym.UP, KeySym.RIGHT): (1, -1),
+            (KeySym.DOWN, KeySym.LEFT): (-1, 1),
+            (KeySym.DOWN, KeySym.RIGHT): (1, 1),
+        }
+
+        if event.sym in move_map:
+            dx, dy = move_map[event.sym]
+            self.game.move_player(dx, dy)
             action_taken = True
-        elif event.sym == KeySym.DOWN:
-            self.game.move_player(0, 1)
+        elif isinstance(event.sym, tuple) and event.sym in move_map:
+            dx, dy = move_map[event.sym]
+            self.game.move_player(dx, dy)
             action_taken = True
-        elif event.sym == KeySym.LEFT:
-            self.game.move_player(-1, 0)
-            action_taken = True
-        elif event.sym == KeySym.RIGHT:
-            self.game.move_player(1, 0)
-            action_taken = True
-        elif event.sym == KeySym.PERIOD:
+        elif event.sym in (KeySym.PERIOD, KeySym.KP_5):
             self.game.message_system.add_message("You wait for a moment.", MessageChannel.SYSTEM)
             action_taken = True
         elif event.sym == KeySym.i:
@@ -48,6 +71,21 @@ class InputSystem(System):
             status = "disabled" if self.game.disable_actor_dialogue else "enabled"
             self.game.message_system.add_message(f"Actor-to-actor dialogue {status}", MessageChannel.SYSTEM)
             action_taken = True
+
+        # Check for diagonal movement with arrow keys
+        if KeySym.UP in self.pressed_keys and KeySym.LEFT in self.pressed_keys:
+            self.game.move_player(-1, -1)
+            action_taken = True
+        elif KeySym.UP in self.pressed_keys and KeySym.RIGHT in self.pressed_keys:
+            self.game.move_player(1, -1)
+            action_taken = True
+        elif KeySym.DOWN in self.pressed_keys and KeySym.LEFT in self.pressed_keys:
+            self.game.move_player(-1, 1)
+            action_taken = True
+        elif KeySym.DOWN in self.pressed_keys and KeySym.RIGHT in self.pressed_keys:
+            self.game.move_player(1, 1)
+            action_taken = True
+
         return action_taken
 
     def handle_door(self, action):
